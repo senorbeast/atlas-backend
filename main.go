@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/senorbeast/atlas-backend/internal/game_room"
+	"github.com/senorbeast/atlas-backend/internal/web_socket"
 )
 
 var upgrader = websocket.Upgrader{
@@ -19,7 +21,7 @@ var upgrader = websocket.Upgrader{
 }
 
 var (
-	gameRooms    = make(map[string]*GameRoom)
+	gameRooms    = make(map[string]*game_room.GameRoom)
 	gameRoomsMux sync.Mutex
 )
 
@@ -41,9 +43,9 @@ func createGameRoomHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gameRoom := &GameRoom{
+	gameRoom := &game_room.GameRoom{
 		RoomID:     roomID,
-		playerData: make(map[string]*PlayerConnection),
+		PlayerData: make(map[string]*game_room.PlayerConnection),
 	}
 
 	gameRoomsMux.Lock()
@@ -52,7 +54,7 @@ func createGameRoomHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Start WebSocket handling for the created game room
 	go func() {
-		HandleWebSocketConnections(gameRoom)
+		web_socket.HandleWebSocketConnections(gameRoom)
 	}()
 
 	// Respond with the game room ID to the frontend
@@ -63,6 +65,8 @@ func main() {
 	http.HandleFunc("/create", createGameRoomHandler)
 
 	// Start the HTTP server
+	fmt.Println("Running atlas-backend")
+	fmt.Println("Visit http://localhost:8080/create")
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
 		fmt.Println("Error starting HTTP server:", err)
