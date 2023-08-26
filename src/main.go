@@ -53,9 +53,9 @@ func createGameRoomHandler(w http.ResponseWriter, r *http.Request) {
 	gameRooms[roomID] = gameRoom
 	gameRoomsMux.Unlock()
 
-	// Start a separate goroutine to handle WebSocket connections for this room
+	// Start WebSocket handling for the created game room
 	go func() {
-		gameRoom.handleWebSocketConnections()
+		handleWebSocketConnections(gameRoom)
 	}()
 
 	// Respond with the game room ID to the frontend
