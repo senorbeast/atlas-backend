@@ -29,9 +29,6 @@ func HandleWebSocketConnections(gr *game_room.GameRoom) {
 		}
 		defer conn.Close()
 
-		// Respond with the game room ID to the frontend
-		fmt.Fprintf(w, "{\"Created Websocket\": \"Welcome to game: %s\"}", gr.RoomID)
-
 		gr.PlayersMux.Lock()
 		// Associate the player's connection with their player ID
 		playerID := generatePlayerID() // You need a way to generate player IDs
@@ -39,6 +36,10 @@ func HandleWebSocketConnections(gr *game_room.GameRoom) {
 		player := &protobufs.PlayerData{
 			PlayerId: playerID,
 		}
+
+		// Respond with the game room ID to the frontend
+		fmt.Fprintf(w, "{\"Welcome to %s\": \"PlayerId: %s\"}", gr.RoomID, playerID)
+		fmt.Println("Welcome to", gr.RoomID, "Player", playerID, "!")
 
 		gr.PlayerData[playerID] = &game_room.PlayerConnection{
 			Player: player,
@@ -82,6 +83,7 @@ func handleMessage(gr *game_room.GameRoom, conn *websocket.Conn) {
 				SenderId: playerID,
 				Content:  content,
 			}
+			fmt.Println("Recieved message:", p)
 
 			// Broadcast the chat message to all players in the game room
 			gr.PlayersMux.Lock()
