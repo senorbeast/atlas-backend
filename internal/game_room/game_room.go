@@ -1,6 +1,6 @@
 package game_room
 
-// game_room.go - Contains the game room handling logic and WebSocket server management
+// internal/game_room/game_room.go - Contains the game room handling logic and WebSocket server management
 
 import (
 	"sync"

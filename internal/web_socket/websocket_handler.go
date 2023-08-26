@@ -1,6 +1,6 @@
 package web_socket
 
-// websocket_handler.go - Contains the WebSocket handling logic
+// internal/websocket_handler.go - Contains the WebSocket handling logic
 
 import (
 	"crypto/rand"

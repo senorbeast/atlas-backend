@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+// internal/protobufs
+
 package atlas_backend.internal;
 
 option go_package = "github.com/senorbeast/atlas-backend/internal/protobufs";

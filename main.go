@@ -1,5 +1,7 @@
 package main
 
+// main.go
+
 import (
 	"crypto/rand"
 	"crypto/sha256"
@@ -8,17 +10,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
 	"github.com/senorbeast/atlas-backend/internal/web_socket"
 )
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		// Allow all connections. You may want to add additional security checks here.
-		return true
-	},
-}
 
 var (
 	gameRooms    = make(map[string]*game_room.GameRoom)

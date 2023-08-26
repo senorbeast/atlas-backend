@@ -1,6 +1,6 @@
 package game_room
 
-// data_models.go - Contains the data models for the game
+// internal/game_room/data_models.go - Contains the data models for the game
 
 import (
 	"github.com/senorbeast/atlas-backend/internal/protobufs"
