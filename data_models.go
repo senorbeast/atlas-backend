@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/senorbeast/atlas-backend/src/protobuf/game_proto"
+	"github.com/senorbeast/atlas-backend/protobuf/game_proto"
 )
 
 // CreateGameRoomRequest is used to create a new game room

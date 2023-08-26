@@ -1,10 +1,10 @@
-// test_client.go
-
 package main
 
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,6 +20,8 @@ func main() {
 	defer conn.Close()
 
 	done := make(chan struct{})
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
 
 	go func() {
 		defer close(done)
@@ -46,6 +48,17 @@ func main() {
 				log.Println("Error writing message:", err)
 				return
 			}
+		case <-interrupt:
+			log.Println("Interrupt signal received, closing connection...")
+			err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err != nil {
+				log.Println("Error sending close message:", err)
+			}
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+			}
+			return
 		}
 	}
 }

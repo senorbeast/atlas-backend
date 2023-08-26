@@ -4,6 +4,12 @@ package atlas_backend.protobuf;
 
 option go_package = "/game_proto";
 
+// Chat Message
+message ChatMessage {
+  string sender_id = 1;
+  string content = 2;
+}
+
 // Message to create a new game room
 message CreateGameRoomRequest {
   string player_name = 1;
@@ -37,3 +43,5 @@ message GameEvent {
   string event_data = 2;
   // Add more fields as needed for game event data
 }
+
+

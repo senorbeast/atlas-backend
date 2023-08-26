@@ -1,5 +1,3 @@
-// main.go - Contains the HTTP API handler for creating game rooms
-
 package main
 
 import (
@@ -11,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/senorbeast/atlas-backend/src/protobuf/game_proto"
 )
 
 var upgrader = websocket.Upgrader{
@@ -45,8 +42,8 @@ func createGameRoomHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	gameRoom := &GameRoom{
-		RoomID:  roomID,
-		players: make(map[string]*game_proto.PlayerData),
+		RoomID:     roomID,
+		playerData: make(map[string]*PlayerConnection),
 	}
 
 	gameRoomsMux.Lock()
@@ -55,7 +52,7 @@ func createGameRoomHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Start WebSocket handling for the created game room
 	go func() {
-		handleWebSocketConnections(gameRoom)
+		HandleWebSocketConnections(gameRoom)
 	}()
 
 	// Respond with the game room ID to the frontend

@@ -20,7 +20,7 @@ go
 *.cover
 
 # Ignore generated protobuf files
-src/protobuf/*.pb.go
+protobuf/*.pb.go
 
 # Ignore editor-specific files
 .vscode/
