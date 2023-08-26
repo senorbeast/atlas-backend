@@ -5,12 +5,12 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
-	multiplayer "github.com/senorbeast/atlas-backend/multiplayer" // Import the generated Go code
 )
 
-func (gr *GameRoom) handleWebSocketConnection(conn *websocket.Conn) {
+func (gr *GameRoom) handleWebSocketConnectionHandler(conn *websocket.Conn) {
 	// ... (Logic to handle a single WebSocket connection)
 	gr.playersMux.Lock()
 	gr.lastActivity = time.Now() // Update the last activity time
@@ -18,7 +18,7 @@ func (gr *GameRoom) handleWebSocketConnection(conn *websocket.Conn) {
 	// ... (Rest of the logic to handle the WebSocket connection)
 }
 
-func (gr *GameRoom) handleWebSocketConnections() {
+func (gr *GameRoom) handleWebSocketConnectionsHandler() {
 	http.HandleFunc("/ws/"+gr.RoomID, func(w http.ResponseWriter, r *http.Request) {
 		// Upgrade HTTP connection to WebSocket
 		conn, err := upgrader.Upgrade(w, r, nil)

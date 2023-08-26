@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-package atlas-backend.protobuf;
+package atlas_backend.protobuf;
+
+option go_package = "/game_proto";
 
 // Message to create a new game room
 message CreateGameRoomRequest {

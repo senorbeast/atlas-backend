@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	multiplayer "atlas-backend/protobuf" // Import the generated Go code
+	"github.com/senorbeast/atlas-backend/src/protobuf/game_proto"
+	// Import the generated Go code
 )
 
 type GameRoom struct {
 	RoomID       string
-	players      map[string]*multiplayer.PlayerData
+	players      map[string]*game_proto.PlayerData
 	playersMux   sync.Mutex
 	lastActivity time.Time // Track the last activity time
 }

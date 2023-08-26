@@ -3,11 +3,15 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/senorbeast/atlas-backend/src/protobuf/game_proto"
 )
 
 var upgrader = websocket.Upgrader{
@@ -17,8 +21,10 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-var gameRooms = make(map[string]*GameRoom)
-var gameRoomsMux sync.Mutex
+var (
+	gameRooms    = make(map[string]*GameRoom)
+	gameRoomsMux sync.Mutex
+)
 
 func generateRoomID() (string, error) {
 	const roomIDLength = 6
@@ -40,7 +46,7 @@ func createGameRoomHandler(w http.ResponseWriter, r *http.Request) {
 
 	gameRoom := &GameRoom{
 		RoomID:  roomID,
-		players: make(map[string]*multiplayer.PlayerData),
+		players: make(map[string]*game_proto.PlayerData),
 	}
 
 	gameRoomsMux.Lock()
