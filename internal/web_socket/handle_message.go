@@ -37,6 +37,7 @@ func HandleMessage(gr *game_room.GameRoom, conn *websocket.Conn) {
 
 			// Process the message based on its type
 			switch clientMessage.GetMessageType() {
+			// ? No need to unmarshal chat message
 			case protobufs.ClientToServerMessageType_SEND_CHAT_MESSAGE:
 				content := clientMessage.GetChatMessagePayload().GetContent()
 				hmt.HandleChatMessage(gr, conn, content)
