@@ -22,6 +22,7 @@ var upgrader = websocket.Upgrader{
 
 func HandleWebSocketConnections(gr *game_room.GameRoom) {
 	http.HandleFunc("/ws/"+gr.RoomID, func(w http.ResponseWriter, r *http.Request) {
+		// Initial Handshake, with client/player
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			fmt.Println("Error upgrading connection:", err)
@@ -41,6 +42,7 @@ func HandleWebSocketConnections(gr *game_room.GameRoom) {
 		fmt.Fprintf(w, "{\"Welcome to %s\": \"PlayerId: %s\"}", gr.RoomID, playerID)
 		fmt.Println("Welcome to", gr.RoomID, "Player", playerID, "!")
 
+		// TODO: Check for unique ids
 		gr.PlayerData[playerID] = &game_room.PlayerConnection{
 			Player: player,
 			Conn:   conn,

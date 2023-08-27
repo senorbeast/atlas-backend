@@ -17,7 +17,7 @@ func HandleChatMessage(gr *game_room.GameRoom, conn *websocket.Conn, content str
 	}
 	// Process chat message and generate a response
 	response := generateChatResponse(senderID, content)
-	rt.SendResponse(conn, response)
+	// rt.SendResponse(conn, response)
 
 	// Broadcast the chat message to all players
 	rt.BroadcastMessage(gr, response)
@@ -31,7 +31,7 @@ func generateChatResponse(senderID, content string) *protobufs.ServerToClientMes
 		Payload: &protobufs.ServerToClientMessage_ChatMessagePayload{
 			ChatMessagePayload: &protobufs.ChatMessagePayload{
 				SenderId: senderID,
-				Content:  "Your response content here",
+				Content:  content,
 			},
 		},
 	}
