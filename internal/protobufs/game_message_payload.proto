@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package protobufs;
+
+// Payload for game state
+message GameStatePayload {
+  // Define your game state fields here
+  int32 level = 1;
+  bool is_started = 2;
+  bool is_over = 3;
+  // ... other fields
+}
+
+// Payload for game update
+message GameUpdatePayload {
+  // Define minimal version of game state here
+  int32 level = 1;
+}

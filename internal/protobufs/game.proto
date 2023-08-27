@@ -2,15 +2,10 @@ syntax = "proto3";
 
 // internal/protobufs
 
-package atlas_backend.internal;
+package protobufs;
 
-option go_package = "github.com/senorbeast/atlas-backend/internal/protobufs";
+option go_package = "/protobufs";
 
-// Chat Message
-message ChatMessage {
-  string sender_id = 1;
-  string content = 2;
-}
 
 // Message to create a new game room
 message CreateGameRoomRequest {
@@ -31,19 +26,5 @@ message PlayerData {
   // Add more fields as needed for player-related data
 }
 
-// GameState represents the state of the game
-message GameState {
-  int32 level = 1;
-  bool is_started = 2;
-  bool is_over = 3;
-  // Add more fields as needed for game state data
-}
-
-// GameEvent represents an event that occurs in the game
-message GameEvent {
-  string event_type = 1;
-  string event_data = 2;
-  // Add more fields as needed for game event data
-}
 
 
