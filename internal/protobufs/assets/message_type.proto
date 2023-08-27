@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package protobufs;
 
+option go_package = "atlas-backend/internal/protobufs";
+
 // MessageType represents the type of message
 enum MessageType {
   GAME_STATE = 0;

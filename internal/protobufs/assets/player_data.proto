@@ -4,19 +4,8 @@ syntax = "proto3";
 
 package protobufs;
 
-option go_package = "/protobufs";
+option go_package = "atlas-backend/internal/protobufs";
 
-
-// Message to create a new game room
-message CreateGameRoomRequest {
-  string player_name = 1;
-}
-
-// Message to join an existing game room
-message JoinGameRoomRequest {
-  string room_id = 1;
-  string player_name = 2;
-}
 
 // PlayerData represents information about a player
 message PlayerData {

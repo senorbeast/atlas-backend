@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
-	"github.com/senorbeast/atlas-backend/internal/protobufs"
+	protobufs "github.com/senorbeast/atlas-backend/internal/protobufs/gen"
 )
 
 var upgrader = websocket.Upgrader{
@@ -79,7 +79,7 @@ func handleMessage(gr *game_room.GameRoom, conn *websocket.Conn) {
 			// Process the chat message or game event here
 			// You can use the playerID to identify the sender
 			// and the content of the message for the message itself
-			chatMessage := &protobufs.ChatMessage{
+			chatMessage := &protobufs.ServerToClientMessage{
 				SenderId: playerID,
 				Content:  content,
 			}

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package protobufs;
 
+option go_package = "atlas-backend/internal/protobufs";
 // Payload for game state
 message GameStatePayload {
   // Define your game state fields here
