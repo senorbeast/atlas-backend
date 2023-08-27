@@ -4,17 +4,19 @@ package protobufs;
 
 option go_package = "atlas-backend/internal/protobufs";
 
-import "message_type.proto";
 import "game_message_payload.proto";
 import "chat_message_payload.proto";
-// import "common.proto";
 
+enum ClientToServerMessageType {
+  REQUEST_GAME_STATE = 0;
+  SEND_GAME_UPDATE = 1;
+  SEND_CHAT_MESSAGE = 2;
+}
 
 // Client to server message
 message ClientToServerMessage {
-  MessageType message_type = 1;
+  ClientToServerMessageType message_type = 1;
   oneof payload {
-    GameStatePayload game_state_payload = 2;
     GameUpdatePayload game_update_payload = 3;
     ChatMessagePayload chat_message_payload = 4;
   }

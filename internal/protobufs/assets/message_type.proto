@@ -4,10 +4,3 @@ package protobufs;
 
 option go_package = "atlas-backend/internal/protobufs";
 
-// MessageType represents the type of message
-enum MessageType {
-  GAME_STATE = 0;
-  GAME_UPDATE = 1;
-  CHAT_MESSAGE = 2;
-}
-

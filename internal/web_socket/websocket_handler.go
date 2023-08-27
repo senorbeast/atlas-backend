@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
-	protobufs "github.com/senorbeast/atlas-backend/internal/protobufs/gen"
+	"github.com/senorbeast/atlas-backend/internal/protobufs"
 )
 
 var upgrader = websocket.Upgrader{
@@ -48,57 +48,12 @@ func HandleWebSocketConnections(gr *game_room.GameRoom) {
 		gr.LastActivity = time.Now()
 		gr.PlayersMux.Unlock()
 
-		// Start handling messages for the player's connection
-		handleMessage(gr, conn)
+		// Start handling messages from the player's connection
+		HandleMessage(gr, conn)
 	})
 
 	// No need to start the WebSocket server here
 	// The server will be started from the main function
-}
-
-func handleMessage(gr *game_room.GameRoom, conn *websocket.Conn) {
-	// Find the player ID based on the connection
-	var playerID string
-	for id, pc := range gr.PlayerData {
-		if pc.Conn == conn {
-			playerID = id
-			break
-		}
-	}
-
-	for {
-		messageType, p, err := conn.ReadMessage()
-		if err != nil {
-			fmt.Println("Error reading message:", err)
-			break
-		}
-
-		// Handle the received message based on its type
-		if messageType == websocket.TextMessage {
-			content := string(p)
-			// Process the chat message or game event here
-			// You can use the playerID to identify the sender
-			// and the content of the message for the message itself
-			chatMessage := &protobufs.ServerToClientMessage{
-				SenderId: playerID,
-				Content:  content,
-			}
-			fmt.Println("Recieved message:", p)
-
-			// Broadcast the chat message to all players in the game room
-			gr.PlayersMux.Lock()
-			defer gr.PlayersMux.Unlock()
-
-			for id, pc := range gr.PlayerData {
-				if id != playerID {
-					err := pc.Conn.WriteJSON(chatMessage)
-					if err != nil {
-						fmt.Println("Error sending chat message:", err)
-					}
-				}
-			}
-		}
-	}
 }
 
 func generatePlayerID() string {
