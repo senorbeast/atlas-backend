@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package protobufs;
+
+// Payload for chat message
+message ChatMessagePayload {
+  string sender_id = 1;
+  string content = 2;
+}
