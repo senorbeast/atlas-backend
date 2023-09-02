@@ -1,6 +1,8 @@
 package handle_message_types
 
 import (
+	"fmt"
+
 	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
 	"github.com/senorbeast/atlas-backend/internal/protobufs"
@@ -18,6 +20,7 @@ func HandleChatMessage(gr *game_room.GameRoom, conn *websocket.Conn, content str
 	// Process chat message and generate a response
 	response := generateChatResponse(senderID, content)
 	// rt.SendResponse(conn, response)
+	fmt.Printf("[%s]: %s\n", senderID, content)
 
 	// Broadcast the chat message to all players
 	rmt.BroadcastMessage(gr, response)

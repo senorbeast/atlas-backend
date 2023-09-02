@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
 	"github.com/senorbeast/atlas-backend/internal/protobufs"
+	rmt "github.com/senorbeast/atlas-backend/internal/web_socket/handle_messages/response_message_types"
 )
 
 var upgrader = websocket.Upgrader{
@@ -21,7 +22,7 @@ var upgrader = websocket.Upgrader{
 }
 
 func HandleWebSocketConnections(gr *game_room.GameRoom) {
-	http.HandleFunc("/ws/"+gr.RoomID, func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/"+gr.RoomID, func(w http.ResponseWriter, r *http.Request) {
 		// Initial Handshake, with client/player
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -32,15 +33,28 @@ func HandleWebSocketConnections(gr *game_room.GameRoom) {
 
 		gr.PlayersMux.Lock()
 		// Associate the player's connection with their player ID
-		playerID := generatePlayerID() // You need a way to generate player IDs
+		playerID := generatePlayerID()
 
 		player := &protobufs.PlayerData{
 			PlayerId: playerID,
 		}
 
-		// Respond with the game room ID to the frontend
-		fmt.Fprintf(w, "{\"Welcome to %s\": \"PlayerId: %s\"}", gr.RoomID, playerID)
-		fmt.Println("Welcome to", gr.RoomID, "Player", playerID, "!")
+		// Create payload with room and player information
+		onConnectAckPayload := &protobufs.OnConnectAckPayload{
+			RoomId:   gr.RoomID,
+			PlayerId: playerID,
+		}
+
+		// Create the ServerToClientMessage
+		ackMessage := &protobufs.ServerToClientMessage{
+			MessageType: protobufs.ServerToClientMessageType_SEND_ON_CONNECT_ACK,
+			Payload: &protobufs.ServerToClientMessage_OnConnectAckPayload{
+				OnConnectAckPayload: onConnectAckPayload,
+			},
+		}
+
+		fmt.Println("Player:", playerID, "Connected to:", gr.RoomID)
+		rmt.SendMessage(conn, ackMessage)
 
 		// TODO: Check for unique ids
 		gr.PlayerData[playerID] = &game_room.PlayerConnection{

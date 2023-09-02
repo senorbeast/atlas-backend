@@ -6,11 +6,13 @@ option go_package = "atlas-backend/internal/protobufs";
 
 import "game_message_payload.proto";
 import "chat_message_payload.proto";
+import "other_payloads.proto";
 
 enum ServerToClientMessageType {
   RESPOND_GAME_STATE = 0;
   BROADCAST_GAME_UPDATE = 1;
   BROADCAST_CHAT_MESSAGE = 2;
+  SEND_ON_CONNECT_ACK = 3;
 }
 
 
@@ -21,5 +23,6 @@ message ServerToClientMessage {
     GameStatePayload game_state_payload = 2;
     GameUpdatePayload game_update_payload = 3;
     ChatMessagePayload chat_message_payload = 4;
+    OnConnectAckPayload on_connect_ack_payload = 5;
   }
 }
