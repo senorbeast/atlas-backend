@@ -51,7 +51,7 @@ func HandleWebSocketConnections(gr *game_room.GameRoom) {
 		gr.PlayersMux.Unlock()
 
 		// Start handling messages from the player's connection
-		HandleMessage(gr, conn)
+		HandleAllMessage(gr, conn)
 	})
 
 	// No need to start the WebSocket server here

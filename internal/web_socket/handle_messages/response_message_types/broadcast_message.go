@@ -1,4 +1,4 @@
-package response_type
+package response_message_type
 
 import (
 	"fmt"

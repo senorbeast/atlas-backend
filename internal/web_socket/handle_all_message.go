@@ -1,16 +1,20 @@
 package web_socket
 
+/* Message is recieved from a client, response to client(s) accordingly
+Response can be to the sender, or to any/all clients
+*/
+
 import (
 	"fmt"
 
 	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
 	"github.com/senorbeast/atlas-backend/internal/protobufs"
-	hmt "github.com/senorbeast/atlas-backend/internal/web_socket/handle_message_types"
+	hm "github.com/senorbeast/atlas-backend/internal/web_socket/handle_messages"
 	"google.golang.org/protobuf/proto"
 )
 
-func HandleMessage(gr *game_room.GameRoom, conn *websocket.Conn) {
+func HandleAllMessage(gr *game_room.GameRoom, conn *websocket.Conn) {
 	// Find the player ID based on the connection
 	// var playerID string
 	// for id, pc := range gr.PlayerData {
@@ -40,12 +44,12 @@ func HandleMessage(gr *game_room.GameRoom, conn *websocket.Conn) {
 			// ? No need to unmarshal chat message
 			case protobufs.ClientToServerMessageType_SEND_CHAT_MESSAGE:
 				content := clientMessage.GetChatMessagePayload().GetContent()
-				hmt.HandleChatMessage(gr, conn, content)
+				hm.HandleChatMessage(gr, conn, content)
 			case protobufs.ClientToServerMessageType_SEND_GAME_UPDATE:
 				payload := clientMessage.GetGameUpdatePayload()
-				hmt.HandleGameUpdate(gr, conn, payload)
+				hm.HandleGameUpdate(gr, conn, payload)
 			case protobufs.ClientToServerMessageType_REQUEST_GAME_STATE:
-				hmt.HandleGameState(gr, conn)
+				hm.HandleGameState(gr, conn)
 				// Add more cases for other message types
 
 			}

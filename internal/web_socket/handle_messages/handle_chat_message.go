@@ -4,7 +4,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
 	"github.com/senorbeast/atlas-backend/internal/protobufs"
-	rt "github.com/senorbeast/atlas-backend/internal/web_socket/handle_message_types/response_types"
+	rmt "github.com/senorbeast/atlas-backend/internal/web_socket/handle_messages/response_message_types"
 )
 
 func HandleChatMessage(gr *game_room.GameRoom, conn *websocket.Conn, content string) {
@@ -20,7 +20,7 @@ func HandleChatMessage(gr *game_room.GameRoom, conn *websocket.Conn, content str
 	// rt.SendResponse(conn, response)
 
 	// Broadcast the chat message to all players
-	rt.BroadcastMessage(gr, response)
+	rmt.BroadcastMessage(gr, response)
 }
 
 // generateChatResponse generates a response for a chat message.
