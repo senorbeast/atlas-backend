@@ -18,7 +18,7 @@ func HandleChatMessage(gr *game_room.GameRoom, conn *websocket.Conn, content str
 		}
 	}
 	// Process chat message and generate a response
-	response := generateChatResponse(senderID, content)
+	response := GenerateChatResponse(senderID, content)
 	// rt.SendResponse(conn, response)
 	fmt.Printf("[%s]: %s\n", senderID, content)
 
@@ -26,8 +26,8 @@ func HandleChatMessage(gr *game_room.GameRoom, conn *websocket.Conn, content str
 	rmt.BroadcastMessage(gr, response)
 }
 
-// generateChatResponse generates a response for a chat message.
-func generateChatResponse(senderID, content string) *protobufs.ServerToClientMessage {
+// GenerateChatResponse generates a response for a chat message.
+func GenerateChatResponse(senderID, content string) *protobufs.ServerToClientMessage {
 	// Process the content and generate a response
 	return &protobufs.ServerToClientMessage{
 		MessageType: protobufs.ServerToClientMessageType_BROADCAST_CHAT_MESSAGE,

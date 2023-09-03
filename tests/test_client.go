@@ -46,8 +46,10 @@ func main() {
 					log.Println("Error connecting to WebSocket:", err)
 				} else {
 					fmt.Println("Connected to WebSocket")
+					// Start the goroutine to listen to the connection
+					go listenToConnection(conn)
 					// Set the global playerId variable with the value received from the server
-					playerId = messageLoop(reader, conn)
+					messageLoop(reader, conn)
 				}
 			}
 		case "2":
@@ -61,8 +63,10 @@ func main() {
 				roomID = ""
 			} else {
 				fmt.Println("Connected to WebSocket")
+				// Start the goroutine to listen to the connection
+				go listenToConnection(conn)
 				// Set the global playerId variable with the value received from the server
-				playerId = messageLoop(reader, conn)
+				messageLoop(reader, conn)
 			}
 		case "q":
 			fmt.Println("Exiting...")
@@ -78,7 +82,7 @@ func main() {
 	}
 }
 
-func messageLoop(reader *bufio.Reader, conn *websocket.Conn) string {
+func messageLoop(reader *bufio.Reader, conn *websocket.Conn) {
 	for {
 		fmt.Print("Enter message: ")
 		message, _ := reader.ReadString('\n')
@@ -87,7 +91,7 @@ func messageLoop(reader *bufio.Reader, conn *websocket.Conn) string {
 		if message == "q" {
 			fmt.Println("Exiting Message mode...")
 			conn.Close()
-			return playerId
+
 		}
 
 		if message != "" {
@@ -97,17 +101,24 @@ func messageLoop(reader *bufio.Reader, conn *websocket.Conn) string {
 			}
 		}
 
+	}
+}
+
+func listenToConnection(conn *websocket.Conn) {
+	for {
 		_, p, err := conn.ReadMessage()
 		if err != nil {
-			log.Println("Error reading message:", err)
-			return playerId // Return the playerId received from the server
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+				log.Println("Error reading message:", err)
+			}
+			return
 		}
 
 		// Unmarshal the received message into ServerToClientMessage
 		var serverMessage protobufs.ServerToClientMessage
 		if err := proto.Unmarshal(p, &serverMessage); err != nil {
 			log.Println("Error unmarshaling message:", err)
-			return playerId // Return the playerId received from the server
+			return
 		}
 
 		// Process the message based on its type
@@ -153,13 +164,11 @@ func connectToWebSocket(roomID string) (*websocket.Conn, error) {
 }
 
 func sendChatMessage(conn *websocket.Conn, senderID, messageContent string) {
-	// Create a ChatMessagePayload
 	chatMessage := &protobufs.ChatMessagePayload{
-		SenderId: senderID,
+		SenderId: playerId, // Use the global playerId variable as the sender ID
 		Content:  messageContent,
 	}
 
-	// Create a ClientToServerMessage with the chat message payload
 	clientMessage := &protobufs.ClientToServerMessage{
 		MessageType: protobufs.ClientToServerMessageType_SEND_CHAT_MESSAGE,
 		Payload: &protobufs.ClientToServerMessage_ChatMessagePayload{
@@ -167,17 +176,15 @@ func sendChatMessage(conn *websocket.Conn, senderID, messageContent string) {
 		},
 	}
 
-	// Marshal the client message to bytes
-	messageBytes, err := proto.Marshal(clientMessage)
+	// Marshal the client message and send it to the server
+	messageData, err := proto.Marshal(clientMessage)
 	if err != nil {
-		log.Println("Error marshaling client message:", err)
+		log.Println("Error marshaling chat message:", err)
 		return
 	}
 
-	// Send the messageBytes using your WebSocket connection (conn)
-	err = conn.WriteMessage(websocket.BinaryMessage, messageBytes)
-	if err != nil {
-		log.Println("Error sending message:", err)
+	if err := conn.WriteMessage(websocket.BinaryMessage, messageData); err != nil {
+		log.Println("Error sending chat message:", err)
 	}
 }
 
