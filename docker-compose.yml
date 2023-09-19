@@ -1,0 +1,10 @@
+version: "3"
+
+services:
+    # This is the Atlas Backend service
+    atlas-backend:
+        build:
+            context: .
+        ports:
+            - "8080:8080"
+# Additional services can be defined here if needed
