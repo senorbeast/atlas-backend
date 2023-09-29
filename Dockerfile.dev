@@ -1,0 +1,18 @@
+# Use the official Golang image as the base image for development
+FROM golang:1.19
+
+LABEL maintainer="Hrishikesh Sawant <your@email.com>"
+LABEL org.opencontainers.image.title="atlas-backend"
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy your Go source code into the container
+COPY . .
+
+# Install any additional development tools or dependencies
+# RUN apt-get update && apt-get install -y <your-development-tools>
+RUN apt-get update 
+
+# Expose the port that your application listens on (8080 in this case)
+EXPOSE 8080
