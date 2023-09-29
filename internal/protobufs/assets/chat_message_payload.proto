@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package protobufs;
 
+option go_package = "atlas-backend/internal/protobufs";
+
+
 // Payload for chat message
 message ChatMessagePayload {
   string sender_id = 1;

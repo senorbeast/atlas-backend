@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package protobufs;
+
+option go_package = "atlas-backend/internal/protobufs";
+
+message OnConnectAckPayload {
+  string roomId = 1;
+  string playerId = 2;
+}
+
+

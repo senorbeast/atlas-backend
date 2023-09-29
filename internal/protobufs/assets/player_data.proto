@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+// internal/protobufs
+
+package protobufs;
+
+option go_package = "atlas-backend/internal/protobufs";
+
+
+// PlayerData represents information about a player
+message PlayerData {
+  string player_id = 1;
+  string name = 2;
+  int32 hearts = 3;
+  int32 score = 4;
+  // Add more fields as needed for player-related data
+}
+
+
+
