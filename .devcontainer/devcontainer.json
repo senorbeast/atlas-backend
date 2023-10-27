@@ -3,9 +3,13 @@
     "dockerComposeFile": "../docker-compose.yml",
     "service": "development",
     "workspaceFolder": "/app",
-    "settings": {
-        "go.useLanguageServer": true,
-        "go.gopath": "/go"
-    },
-    "extensions": ["golang.go"]
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "go.useLanguageServer": true,
+                "go.gopath": "/go"
+            },
+            "extensions": ["golang.go"]
+        }
+    }
 }
