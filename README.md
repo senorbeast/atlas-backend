@@ -33,6 +33,10 @@ go install               # installs app in $GOBIN or $GOPATH of the system.
 
 ```
 
+#### Development
+
+Using docker dev container
+
 #### Generating files
 
 > Update as more proto defns are added
