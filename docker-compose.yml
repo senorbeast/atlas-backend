@@ -8,11 +8,11 @@ services:
         ports:
             - "8081:8080" # Change the host port to 8081
     # Development container service
-    development:
-        build:
-            context: .
-            dockerfile: Dockerfile.dev
-        volumes:
-            - .:/app
-        working_dir: /app
+    # development:
+    #     build:
+    #         context: .
+    #         dockerfile: Dockerfile.dev
+    #     volumes:
+    #         - .:/app
+    #     working_dir: /app
 # Additional services can be defined here if needed
