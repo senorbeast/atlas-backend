@@ -1,4 +1,3 @@
-
 # Atlas Backend
 
 ## Architecture
@@ -42,7 +41,7 @@ Using docker dev container
 > Update as more proto defns are added
 
 ```bash
-protoc --proto_path=internal/protobufs/assets --go_out=internal/protobufs --go_opt=paths=source_relative client_server_message.proto server_client_message.proto player_data.proto message_type.proto game_message_payload.proto chat_message_payload.proto
+protoc --proto_path=internal/protobufs/assets --go_out=internal/protobufs --go_opt=paths=source_relative client_server_message.proto server_client_message.proto player_data.proto other_payloads.proto game_message_payload.proto chat_message_payload.proto
 ```
 
 <!-- protoc -I=src/protobuf/ --go_out=src/protobuf/ src/protobuf/game.proto -->
@@ -52,7 +51,7 @@ protoc --proto_path=internal/protobufs/assets --go_out=internal/protobufs --go_o
 ```bash
 ├── bin
 │   └── atlas-backend
-├── go.mod  
+├── go.mod
 ├── go.sum
 ├── internal        # internal packages
 │   ├── game_room
@@ -64,7 +63,7 @@ protoc --proto_path=internal/protobufs/assets --go_out=internal/protobufs --go_o
 │   └── web_socket
 │       └── websocket_handler.go
 ├── main.go         # entry point
-├── packages        # exportable packages 
+├── packages        # exportable packages
 ├── README.md
 └── tests
     └── test_client.go
