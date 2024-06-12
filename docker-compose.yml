@@ -2,11 +2,11 @@ version: "3"
 
 services:
     # This is the Atlas Backend service [Production]
-    production:
-        build:
-            context: .
-        ports:
-            - "8081:8080" # Change the host port to 8081
+    # production:
+    #     build:
+    #         context: .
+    #     ports:
+    #         - "8081:8080" # Change the host port to 8081
     # Development container service
     development:
         build:

@@ -84,7 +84,7 @@ func main() {
 
 func messageLoop(reader *bufio.Reader, conn *websocket.Conn) {
 	for {
-		fmt.Print("Enter message: ")
+		// fmt.Print("Enter message: ")
 		message, _ := reader.ReadString('\n')
 		message = strings.TrimSpace(message)
 
@@ -126,7 +126,9 @@ func listenToConnection(conn *websocket.Conn) {
 		case protobufs.ServerToClientMessageType_BROADCAST_CHAT_MESSAGE:
 			// Handle chat message
 			chatMessage := serverMessage.GetChatMessagePayload()
-			fmt.Printf("[%s]: %s\n", chatMessage.SenderId, chatMessage.Content)
+			if playerId != chatMessage.SenderId {
+				fmt.Printf("[%s]: %s\n", chatMessage.SenderId, chatMessage.Content)
+			}
 		case protobufs.ServerToClientMessageType_SEND_ON_CONNECT_ACK:
 			// Handle connect ack message and save sender ID
 			ackPayload := serverMessage.GetOnConnectAckPayload()
