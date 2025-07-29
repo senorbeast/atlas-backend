@@ -4,6 +4,8 @@ package protobufs;
 
 option go_package = "atlas-backend/internal/protobufs";
 
+import "player_data.proto";
+
 // Payload for game state
 message GameStatePayload {
   // Define your game state fields here
@@ -11,6 +13,8 @@ message GameStatePayload {
   bool is_started = 2;
   bool is_over = 3;
   string currentLetter = 4;
+  repeated PlayerData players = 5;
+  string current_player_id = 6;
     // array usedPlaces
   // ... other fields
 }
@@ -20,4 +24,5 @@ message GameUpdatePayload {
   // Define minimal version of game state here
   int32 level = 1;
   string type = 2;
+  string value = 3;
 }
