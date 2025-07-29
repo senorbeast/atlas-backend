@@ -2,26 +2,38 @@ syntax = "proto3";
 
 package protobufs;
 
-option go_package = "atlas-backend/internal/protobufs";
+import "payloads.proto";
 
-import "game_message_payload.proto";
-import "chat_message_payload.proto";
-import "player_data.proto";
+option go_package = "github.com/hue-go/atlas-backend/internal/protobufs";
 
-enum ClientToServerMessageType {
-  REQUEST_GAME_STATE = 0;
-  SEND_GAME_UPDATE = 1;
-  SEND_CHAT_MESSAGE = 2;
-  SET_PLAYER_DETAILS = 3;
+enum ClientServerMessageType {
+  C2S_UNKNOWN = 0;
+
+  // Connection & Session (100-199)
+  PLAYER_JOIN_GAME = 101;
+  RECONNECT_PLAYER = 102;
+
+  // Lobby Actions (200-299)
+  TOGGLE_READY_STATE = 201;
+  START_GAME = 202;
+
+  // Gameplay Actions (300-399)
+  SUBMIT_WORD = 301;
+  USE_POWER_UP = 302;
+
+  // Chat (400-499)
+  SEND_CHAT_MESSAGE = 401;
 }
 
-// Client to server message
-message ClientToServerMessage {
-  ClientToServerMessageType message_type = 1;
+message ClientServerMessage {
+  ClientServerMessageType message_type = 1;
   oneof payload {
-    GameUpdatePayload game_update_payload = 3;
-    ChatMessagePayload chat_message_payload = 4;
-    PlayerData player_data_payload = 5;
+    PlayerJoinGamePayload player_join_game = 2;
+    ReconnectPlayerPayload reconnect_player = 3;
+    ToggleReadyStatePayload toggle_ready_state = 4;
+    StartGamePayload start_game = 5;
+    SubmitWordPayload submit_word = 6;
+    UsePowerUpPayload use_power_up = 7;
+    ChatMessagePayload chat_message = 8;
   }
 }
-

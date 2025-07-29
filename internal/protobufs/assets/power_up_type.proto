@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package protobufs;
+
+option go_package = "github.com/hue-go/atlas-backend/internal/protobufs";
+
+enum PowerUpType {
+  POWER_UP_TYPE_UNSPECIFIED = 0;
+  SKIP_TURN = 1;
+  EXTRA_TIME = 2;
+}

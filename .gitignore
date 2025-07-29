@@ -25,3 +25,5 @@ go
 # Ignore editor-specific files
 .vscode/
 .idea/
+vendor
+bin/

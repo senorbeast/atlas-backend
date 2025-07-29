@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package protobufs;
+
+import "player_data.proto";
+import "power_up_type.proto";
+
+option go_package = "github.com/hue-go/atlas-backend/internal/protobufs";
+
+// C2S Payloads
+message PlayerJoinGamePayload { string player_name = 1; }
+message ReconnectPlayerPayload { string player_id = 1; }
+message ToggleReadyStatePayload { bool is_ready = 1; }
+message StartGamePayload { string category = 1; }
+message SubmitWordPayload { string word = 1; }
+message UsePowerUpPayload { PowerUpType power_up_type = 1; }
+message ChatMessagePayload { string content = 1; }
+
+
+// S2C Payloads
+message OnConnectAckPayload { string room_id = 1; string player_id = 2; bool is_host = 3; }
+message PlayerJoinedPayload { PlayerData player_data = 1; }
+message PlayerLeftPayload { string player_id = 1; }
+message PlayerDataUpdatePayload { PlayerData player_data = 1; }
+message GameStartedPayload { string category = 1; string starting_letter = 2; string turn_player_id = 3; int32 turn_duration_seconds = 4; }
+message TurnChangePayload { string next_player_id = 1; string last_word = 2; string next_letter = 3; }
+message WordValidationResultPayload { bool is_valid = 1; string reason = 2; }
+message GameOverPayload { string winner_player_id = 1; map<string, int32> scores = 2; }
+message ErrorMessagePayload { string message = 1; }
+message BroadcastChatMessagePayload { string sender_id = 1; string content = 2; }
+
+// The main sync payload
+message GameStateSyncPayload {
+  string room_id = 1;
+  string category = 2;
+  bool is_started = 3;
+  bool is_over = 4;
+  string turn_player_id = 5;
+  string current_letter = 6;
+  string last_word = 7;
+  repeated PlayerData players = 8;
+  int64 turn_start_timestamp = 9;
+}

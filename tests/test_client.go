@@ -7,25 +7,21 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/protobufs"
 	"google.golang.org/protobuf/proto"
 )
 
-var playerId string
+var playerID string
+var playerNames = make(map[string]string)
+var namesMux sync.Mutex
 
 func main() {
 	reader := bufio.NewReader(os.Stdin)
-	done := make(chan struct{})
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-
 	var conn *websocket.Conn
-	var roomID string
 
 	for {
 		printMenu()
@@ -33,109 +29,123 @@ func main() {
 		option, _ := reader.ReadString('\n')
 		option = strings.TrimSpace(option)
 
+		var err error
+		var roomID string
+
 		switch option {
 		case "1":
-			newRoomID, err := createGameRoom()
+			roomID, err = createGameRoom()
 			if err != nil {
 				log.Println("Error creating game room:", err)
-			} else {
-				fmt.Printf("Room created with ID: %s\n", newRoomID)
-				roomID = newRoomID
-				conn, err = connectToWebSocket(roomID)
-				if err != nil {
-					log.Println("Error connecting to WebSocket:", err)
-				} else {
-					fmt.Println("Connected to WebSocket")
-					// Start the goroutine to listen to the connection
-					go listenToConnection(conn)
-					// Set the global playerId variable with the value received from the server
-					messageLoop(reader, conn)
-				}
+				continue
 			}
+			fmt.Printf("Room created with ID: %s\n", roomID)
+			fallthrough
 		case "2":
-			fmt.Print("Enter existing room ID: ")
-			roomID, _ = reader.ReadString('\n')
-			roomID = strings.TrimSpace(roomID)
-			conn, err := connectToWebSocket(roomID)
+			if roomID == "" {
+				fmt.Print("Enter existing room ID: ")
+				roomID, _ = reader.ReadString('\n')
+				roomID = strings.TrimSpace(roomID)
+			}
+			conn, err = connectToWebSocket(roomID)
 			if err != nil {
 				log.Println("Error connecting to WebSocket:", err)
-				fmt.Println("Invalid room ID.")
-				roomID = ""
-			} else {
-				fmt.Println("Connected to WebSocket")
-				// Start the goroutine to listen to the connection
-				go listenToConnection(conn)
-				// Set the global playerId variable with the value received from the server
-				messageLoop(reader, conn)
+				continue
 			}
+
+			connected := make(chan bool)
+			go listenToConnection(conn, connected)
+
+			// Wait for connection to be acknowledged
+			<-connected
+
+			messageLoop(reader, conn)
 		case "q":
 			fmt.Println("Exiting...")
-			close(done)
 			if conn != nil {
 				conn.Close()
 			}
-			<-done // Wait for the channel to be closed
 			return
 		default:
-			fmt.Println("Invalid option. Please select a valid option.")
+			fmt.Println("Invalid option.")
 		}
 	}
 }
 
 func messageLoop(reader *bufio.Reader, conn *websocket.Conn) {
+	fmt.Print("Enter your name: ")
+	name, _ := reader.ReadString('\n')
+	name = strings.TrimSpace(name)
+	sendJoinGame(conn, name)
+
+	fmt.Println("You can now start chatting. Type 'q' to disconnect.")
+
 	for {
-		// fmt.Print("Enter message: ")
 		message, _ := reader.ReadString('\n')
 		message = strings.TrimSpace(message)
 
 		if message == "q" {
-			fmt.Println("Exiting Message mode...")
-			conn.Close()
-
+			fmt.Println("Disconnecting...")
+			return
 		}
 
 		if message != "" {
-			if conn != nil {
-				// Send the typed message as a chat message
-				sendChatMessage(conn, playerId, message)
-			}
+			sendChatMessage(conn, message)
 		}
-
 	}
 }
 
-func listenToConnection(conn *websocket.Conn) {
+func listenToConnection(conn *websocket.Conn, connected chan bool) {
+	defer conn.Close()
 	for {
 		_, p, err := conn.ReadMessage()
 		if err != nil {
-			if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Println("Error reading message:", err)
 			}
 			return
 		}
 
-		// Unmarshal the received message into ServerToClientMessage
-		var serverMessage protobufs.ServerToClientMessage
+		var serverMessage protobufs.ServerClientMessage
 		if err := proto.Unmarshal(p, &serverMessage); err != nil {
 			log.Println("Error unmarshaling message:", err)
-			return
+			continue
 		}
 
-		// Process the message based on its type
+		namesMux.Lock()
 		switch serverMessage.MessageType {
-		case protobufs.ServerToClientMessageType_BROADCAST_CHAT_MESSAGE:
-			// Handle chat message
-			chatMessage := serverMessage.GetChatMessagePayload()
-			if playerId != chatMessage.SenderId {
-				fmt.Printf("[%s]: %s\n", chatMessage.SenderId, chatMessage.Content)
+		case protobufs.ServerClientMessageType_BROADCAST_CHAT_MESSAGE:
+			chatMessage := serverMessage.GetBroadcastChatMessage()
+			senderName, ok := playerNames[chatMessage.SenderId]
+			if !ok {
+				senderName = "Unknown"
 			}
-		case protobufs.ServerToClientMessageType_SEND_ON_CONNECT_ACK:
-			// Handle connect ack message and save sender ID
-			ackPayload := serverMessage.GetOnConnectAckPayload()
-			fmt.Printf("Connected to room %s. Your Player ID is: %s\n", ackPayload.RoomId, ackPayload.PlayerId)
-			playerId = ackPayload.PlayerId // Update the playerId directly
-			// Add cases for other message types as needed
+			if playerID != chatMessage.SenderId {
+				fmt.Printf("\n[%s]: %s\n", senderName, chatMessage.Content)
+			}
+		case protobufs.ServerClientMessageType_ON_CONNECT_ACK:
+			ackPayload := serverMessage.GetOnConnectAck()
+			fmt.Printf("\nConnected to room %s. Your Player ID is: %s\n", ackPayload.RoomId, ackPayload.PlayerId)
+			playerID = ackPayload.PlayerId
+			connected <- true
+		case protobufs.ServerClientMessageType_GAME_STATE_SYNC:
+			for _, p := range serverMessage.GetGameStateSync().Players {
+				playerNames[p.PlayerId] = p.Name
+			}
+		case protobufs.ServerClientMessageType_PLAYER_JOINED:
+			playerData := serverMessage.GetPlayerJoined().PlayerData
+			playerNames[playerData.PlayerId] = playerData.Name
+			fmt.Printf("\nPlayer %s joined the room.\n", playerData.Name)
+		case protobufs.ServerClientMessageType_PLAYER_LEFT:
+			leftPlayerID := serverMessage.GetPlayerLeft().PlayerId
+			leftPlayerName, ok := playerNames[leftPlayerID]
+			if !ok {
+				leftPlayerName = leftPlayerID
+			}
+			fmt.Printf("\nPlayer %s left the room.\n", leftPlayerName)
+			delete(playerNames, leftPlayerID)
 		}
+		namesMux.Unlock()
 	}
 }
 
@@ -157,7 +167,7 @@ func createGameRoom() (string, error) {
 }
 
 func connectToWebSocket(roomID string) (*websocket.Conn, error) {
-	url := fmt.Sprintf("ws://localhost:8080/%s", roomID)
+	url := fmt.Sprintf("ws://localhost:8080/ws/%s", roomID)
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
@@ -165,20 +175,29 @@ func connectToWebSocket(roomID string) (*websocket.Conn, error) {
 	return conn, nil
 }
 
-func sendChatMessage(conn *websocket.Conn, senderID, messageContent string) {
+func sendJoinGame(conn *websocket.Conn, name string) {
+	msg := &protobufs.ClientServerMessage{
+		MessageType: protobufs.ClientServerMessageType_PLAYER_JOIN_GAME,
+		Payload: &protobufs.ClientServerMessage_PlayerJoinGame{
+			PlayerJoinGame: &protobufs.PlayerJoinGamePayload{PlayerName: name},
+		},
+	}
+	data, _ := proto.Marshal(msg)
+	conn.WriteMessage(websocket.BinaryMessage, data)
+}
+
+func sendChatMessage(conn *websocket.Conn, messageContent string) {
 	chatMessage := &protobufs.ChatMessagePayload{
-		SenderId: playerId, // Use the global playerId variable as the sender ID
-		Content:  messageContent,
+		Content: messageContent,
 	}
 
-	clientMessage := &protobufs.ClientToServerMessage{
-		MessageType: protobufs.ClientToServerMessageType_SEND_CHAT_MESSAGE,
-		Payload: &protobufs.ClientToServerMessage_ChatMessagePayload{
-			ChatMessagePayload: chatMessage,
+	clientMessage := &protobufs.ClientServerMessage{
+		MessageType: protobufs.ClientServerMessageType_SEND_CHAT_MESSAGE,
+		Payload: &protobufs.ClientServerMessage_ChatMessage{
+			ChatMessage: chatMessage,
 		},
 	}
 
-	// Marshal the client message and send it to the server
 	messageData, err := proto.Marshal(clientMessage)
 	if err != nil {
 		log.Println("Error marshaling chat message:", err)
@@ -191,9 +210,9 @@ func sendChatMessage(conn *websocket.Conn, senderID, messageContent string) {
 }
 
 func printMenu() {
-	fmt.Println("===== Menu =====")
+	fmt.Println("\n===== Atlas CLI Client =====")
 	fmt.Println("1. Create Room and Connect")
 	fmt.Println("2. Connect to Existing Room")
 	fmt.Println("q. Quit")
-	fmt.Println("================")
+	fmt.Println("==========================")
 }

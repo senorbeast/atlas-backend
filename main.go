@@ -1,15 +1,14 @@
 package main
 
-// main.go
-
 import (
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
 	"github.com/senorbeast/atlas-backend/internal/web_socket"
 )
@@ -19,50 +18,71 @@ var (
 	gameRoomsMux sync.Mutex
 )
 
-func generateRoomID() (string, error) {
-	const roomIDLength = 6
-	randomBytes := make([]byte, roomIDLength)
-	_, err := rand.Read(randomBytes)
-	if err != nil {
-		return "", err
-	}
-	hash := sha256.Sum256(randomBytes)
-	return base64.URLEncoding.EncodeToString(hash[:roomIDLength]), nil
-}
-
 func createGameRoomHandler(w http.ResponseWriter, r *http.Request) {
-	roomID, err := generateRoomID()
-	if err != nil {
-		http.Error(w, "Failed to generate RoomID", http.StatusInternalServerError)
-		return
-	}
-
-	gameRoom := &game_room.GameRoom{
-		RoomID:     roomID,
-		PlayerData: make(map[string]*game_room.PlayerConnection),
-	}
+	roomID := uuid.New().String()[:8] // Short UUID for room ID
+	gr := game_room.NewGameRoom(roomID)
 
 	gameRoomsMux.Lock()
-	gameRooms[roomID] = gameRoom
+	gameRooms[roomID] = gr
 	gameRoomsMux.Unlock()
 
-	// Start WebSocket handling for the created game room
-	go func() {
-		web_socket.HandleWebSocketConnections(gameRoom)
-	}()
+	go web_socket.HandleWebSocketConnections(gr)
 
-	// Respond with the game room ID to the frontend
-	fmt.Fprintf(w, "{\"roomId\": \"%s\"}", gameRoom.RoomID)
+	log.Printf("Room created: %s", roomID)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"roomId": roomID})
+}
+
+func listRoomsHandler(w http.ResponseWriter, r *http.Request) {
+	gameRoomsMux.Lock()
+	defer gameRoomsMux.Unlock()
+
+	type roomInfo struct {
+		RoomID      string `json:"roomId"`
+		PlayerCount int    `json:"playerCount"`
+		IsStarted   bool   `json:"isStarted"`
+	}
+
+	rooms := make([]roomInfo, 0, len(gameRooms))
+	for _, gr := range gameRooms {
+		rooms = append(rooms, roomInfo{
+			RoomID:      gr.RoomID,
+			PlayerCount: len(gr.Players),
+			IsStarted:   gr.IsStarted,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rooms)
+}
+
+func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
 
 func main() {
 	http.HandleFunc("/create", createGameRoomHandler)
+	http.HandleFunc("/rooms", listRoomsHandler)
+	http.HandleFunc("/health", healthCheckHandler)
 
-	// Start the HTTP server
-	fmt.Println("Running atlas-backend")
-	fmt.Println("Visit http://localhost:8080/create")
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		fmt.Println("Error starting HTTP server:", err)
+	// Cleanup inactive rooms periodically
+	go func() {
+		for {
+			time.Sleep(10 * time.Minute)
+			gameRoomsMux.Lock()
+			for id, gr := range gameRooms {
+				if time.Since(gr.LastActivity) > 30*time.Minute {
+					delete(gameRooms, id)
+					log.Printf("Cleaned up inactive room: %s", id)
+				}
+			}
+			gameRoomsMux.Unlock()
+		}
+	}()
+
+	fmt.Println("Server starting on :8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
 	}
 }
