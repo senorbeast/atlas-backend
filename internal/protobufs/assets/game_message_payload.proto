@@ -6,18 +6,37 @@ option go_package = "atlas-backend/internal/protobufs";
 
 // Payload for game state
 message GameStatePayload {
-  // Define your game state fields here
   int32 level = 1;
   bool is_started = 2;
   bool is_over = 3;
-  string currentLetter = 4;
-    // array usedPlaces
-  // ... other fields
+  string current_letter = 4;
+  string game_kind = 5;
+  repeated AcceptedCity accepted_cities = 6;
+  string started_at = 7;
+  string expires_at = 8;
+  string end_reason = 9;
+  string current_turn_player_id = 10;
+  string current_turn_player_name = 11;
+  int32 turn_index = 12;
 }
 
 // Payload for game update
 message GameUpdatePayload {
-  // Define minimal version of game state here
   int32 level = 1;
   string type = 2;
+  string game_kind = 3;
+  string city_name = 4;
+  AcceptedCity accepted_city = 5;
+  string error_code = 6;
+  string error_message = 7;
+}
+
+message AcceptedCity {
+  reserved 3, 4, 5;
+
+  string city_hash = 1;
+  string name = 2;
+  string submitted_by_player_id = 6;
+  string submitted_by_name = 7;
+  string submitted_at = 8;
 }

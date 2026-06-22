@@ -9,4 +9,7 @@ option go_package = "atlas-backend/internal/protobufs";
 message ChatMessagePayload {
   string sender_id = 1;
   string content = 2;
+  string message_id = 3;
+  string sender_name = 4;
+  string created_at = 5;
 }

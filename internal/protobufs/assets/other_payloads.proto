@@ -4,9 +4,45 @@ package protobufs;
 
 option go_package = "atlas-backend/internal/protobufs";
 
-message OnConnectAckPayload {
-  string roomId = 1;
-  string playerId = 2;
+import "player_data.proto";
+import "game_message_payload.proto";
+
+message JoinRoomPayload {
+  string display_name = 1;
+  string game_kind = 2;
+  string turn_mode = 3;
 }
 
+message OnConnectAckPayload {
+  string room_id = 1;
+  string player_id = 2;
+  string game_kind = 3;
+  RoomSnapshot room = 4;
+  GameStatePayload game_state = 5;
+  string turn_mode = 6;
+}
 
+message RoomSnapshot {
+  string room_id = 1;
+  string game_kind = 2;
+  string status = 3;
+  int32 max_players = 4;
+  bool is_started = 5;
+  string created_at = 6;
+  string started_at = 7;
+  string expires_at = 8;
+  repeated PlayerData players = 9;
+  string turn_mode = 10;
+  string current_turn_player_id = 11;
+  string current_turn_player_name = 12;
+  int32 turn_index = 13;
+}
+
+message ServerErrorPayload {
+  string code = 1;
+  string message = 2;
+}
+
+message RoomUpdatePayload {
+  RoomSnapshot room = 1;
+}

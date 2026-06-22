@@ -1,96 +1,279 @@
 package web_socket
 
-// internal/websocket_handler.go - Contains the WebSocket handling logic
-
 import (
-	"crypto/rand"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/senorbeast/atlas-backend/internal/game_room"
+	"github.com/senorbeast/atlas-backend/internal/games"
 	"github.com/senorbeast/atlas-backend/internal/protobufs"
-	rmt "github.com/senorbeast/atlas-backend/internal/web_socket/handle_messages/response_message_types"
+	"google.golang.org/protobuf/proto"
 )
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		// Allow all connections. You may want to add additional security checks here.
 		return true
 	},
 }
 
-func HandleWebSocketConnections(gr *game_room.GameRoom) {
-	http.HandleFunc("/"+gr.RoomID, func(w http.ResponseWriter, r *http.Request) {
-		// Initial Handshake, with client/player
+var connectionWriteLocks sync.Map
+
+func HandleWebSocketConnections(manager *game_room.RoomManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		roomID, ok := roomIDFromWebSocketPath(r.URL.Path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			fmt.Println("Error upgrading connection:", err)
 			return
 		}
-		defer conn.Close()
 
-		gr.PlayersMux.Lock()
-		// Associate the player's connection with their player ID
-		playerID := generatePlayerID()
-
-		player := &protobufs.PlayerData{
-			PlayerId: playerID,
+		playerID, joined := handleJoin(manager, roomID, conn)
+		if !joined {
+			connectionWriteLocks.Delete(conn)
+			_ = conn.Close()
+			return
 		}
 
-		// Create payload with room and player information
-		onConnectAckPayload := &protobufs.OnConnectAckPayload{
-			RoomId:   gr.RoomID,
-			PlayerId: playerID,
-		}
+		defer func() {
+			defer connectionWriteLocks.Delete(conn)
+			update := manager.Disconnect(roomID, playerID, time.Now())
+			if update != nil {
+				broadcast(manager, roomID, &protobufs.ServerToClientMessage{
+					MessageType: protobufs.ServerToClientMessageType_BROADCAST_ROOM_UPDATE,
+					Payload: &protobufs.ServerToClientMessage_RoomUpdatePayload{
+						RoomUpdatePayload: update,
+					},
+				})
+			}
+		}()
 
-		// Create the ServerToClientMessage
-		ackMessage := &protobufs.ServerToClientMessage{
-			MessageType: protobufs.ServerToClientMessageType_SEND_ON_CONNECT_ACK,
-			Payload: &protobufs.ServerToClientMessage_OnConnectAckPayload{
-				OnConnectAckPayload: onConnectAckPayload,
-			},
-		}
+		HandleAllMessages(manager, roomID, playerID, conn)
+	}
+}
 
-		fmt.Println("Player:", playerID, "Connected to:", gr.RoomID)
-		rmt.SendMessage(conn, ackMessage)
+func handleJoin(manager *game_room.RoomManager, roomID string, conn *websocket.Conn) (string, bool) {
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	messageType, payload, err := conn.ReadMessage()
+	_ = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		sendError(conn, "join_timeout", "Join message was not received")
+		return "", false
+	}
+	if messageType != websocket.BinaryMessage {
+		sendError(conn, "invalid_payload", "Join message must be protobuf binary")
+		return "", false
+	}
 
-		// TODO: Check for unique ids
-		gr.PlayerData[playerID] = &game_room.PlayerConnection{
-			Player: player,
-			Conn:   conn,
-		}
-		gr.LastActivity = time.Now()
-		gr.PlayersMux.Unlock()
+	var clientMessage protobufs.ClientToServerMessage
+	if err := proto.Unmarshal(payload, &clientMessage); err != nil {
+		sendError(conn, "invalid_payload", "Unable to decode join message")
+		return "", false
+	}
+	if clientMessage.GetMessageType() != protobufs.ClientToServerMessageType_JOIN_ROOM {
+		sendError(conn, "join_required", "Join room before sending other messages")
+		return "", false
+	}
 
-		// Start handling messages from the player's connection
-		HandleAllMessage(gr, conn)
+	joinPayload := clientMessage.GetJoinRoomPayload()
+	if joinPayload == nil {
+		sendError(conn, "invalid_join", "Join payload is required")
+		return "", false
+	}
+
+	ack, playerID, gameErr := manager.JoinRoom(roomID, conn, joinPayload.GetDisplayName(), joinPayload.GetGameKind(), joinPayload.GetTurnMode(), time.Now())
+	if gameErr != nil {
+		sendGameError(conn, gameErr)
+		return "", false
+	}
+
+	send(conn, &protobufs.ServerToClientMessage{
+		MessageType: protobufs.ServerToClientMessageType_SEND_ON_CONNECT_ACK,
+		Payload: &protobufs.ServerToClientMessage_OnConnectAckPayload{
+			OnConnectAckPayload: ack,
+		},
 	})
 
-	// No need to start the WebSocket server here
-	// The server will be started from the main function
-}
-
-func generatePlayerID() string {
-	// Generate a random player ID (you might want to make this more robust)
-	randomBytes := make([]byte, 8)
-	_, err := rand.Read(randomBytes)
-	if err != nil {
-		return ""
+	broadcast(manager, roomID, &protobufs.ServerToClientMessage{
+		MessageType: protobufs.ServerToClientMessageType_BROADCAST_ROOM_UPDATE,
+		Payload: &protobufs.ServerToClientMessage_RoomUpdatePayload{
+			RoomUpdatePayload: &protobufs.RoomUpdatePayload{Room: ack.GetRoom()},
+		},
+	})
+	if ack.GetGameState() != nil {
+		broadcast(manager, roomID, &protobufs.ServerToClientMessage{
+			MessageType: protobufs.ServerToClientMessageType_RESPOND_GAME_STATE,
+			Payload: &protobufs.ServerToClientMessage_GameStatePayload{
+				GameStatePayload: ack.GetGameState(),
+			},
+		})
 	}
-	return fmt.Sprintf("%x", randomBytes)
+
+	fmt.Println("Player:", playerID, "joined room:", roomID, "as:", joinPayload.GetDisplayName())
+	return playerID, true
 }
 
-// func (gr *GameRoom) removePlayer(playerID string) {
-// 	gr.playersMux.Lock()
-// 	defer gr.playersMux.Unlock()
+func HandleAllMessages(manager *game_room.RoomManager, roomID string, playerID string, conn *websocket.Conn) {
+	for {
+		messageType, payload, err := conn.ReadMessage()
+		if err != nil {
+			fmt.Println("Error reading message:", err)
+			return
+		}
+		if messageType != websocket.BinaryMessage {
+			sendError(conn, "invalid_payload", "Messages must be protobuf binary")
+			continue
+		}
 
-// 	// Close the player's connection if it exists
-// 	if pc, exists := gr.playerData[playerID]; exists {
-// 		pc.Conn.Close()
-// 	}
+		var clientMessage protobufs.ClientToServerMessage
+		if err := proto.Unmarshal(payload, &clientMessage); err != nil {
+			sendError(conn, "invalid_payload", "Unable to decode message")
+			continue
+		}
 
-// 	// Remove the player's data from the map
-// 	delete(gr.playerData, playerID)
-// }
+		switch clientMessage.GetMessageType() {
+		case protobufs.ClientToServerMessageType_SEND_CHAT_MESSAGE:
+			handleChatMessage(manager, roomID, playerID, conn, clientMessage.GetChatMessagePayload())
+		case protobufs.ClientToServerMessageType_SEND_GAME_UPDATE:
+			handleGameUpdate(manager, roomID, playerID, conn, clientMessage.GetGameUpdatePayload())
+		case protobufs.ClientToServerMessageType_REQUEST_GAME_STATE:
+			handleGameState(manager, roomID, conn)
+		case protobufs.ClientToServerMessageType_JOIN_ROOM:
+			sendError(conn, "already_joined", "Player is already joined")
+		default:
+			sendError(conn, "unsupported_message", "Unsupported message type")
+		}
+	}
+}
+
+func handleChatMessage(manager *game_room.RoomManager, roomID string, playerID string, conn *websocket.Conn, payload *protobufs.ChatMessagePayload) {
+	if payload == nil {
+		sendError(conn, "invalid_chat", "Chat payload is required")
+		return
+	}
+
+	chatPayload, gameErr := manager.AddChatMessage(roomID, playerID, payload.GetContent(), time.Now())
+	if gameErr != nil {
+		sendGameError(conn, gameErr)
+		return
+	}
+
+	broadcast(manager, roomID, &protobufs.ServerToClientMessage{
+		MessageType: protobufs.ServerToClientMessageType_BROADCAST_CHAT_MESSAGE,
+		Payload: &protobufs.ServerToClientMessage_ChatMessagePayload{
+			ChatMessagePayload: chatPayload,
+		},
+	})
+}
+
+func handleGameUpdate(manager *game_room.RoomManager, roomID string, playerID string, conn *websocket.Conn, payload *protobufs.GameUpdatePayload) {
+	if payload == nil {
+		sendError(conn, "invalid_game_update", "Game update payload is required")
+		return
+	}
+
+	result, roomUpdate, gameErr := manager.ApplyGameUpdate(roomID, playerID, payload, time.Now())
+	if gameErr != nil {
+		sendGameError(conn, gameErr)
+		return
+	}
+
+	if result.Update != nil {
+		broadcast(manager, roomID, &protobufs.ServerToClientMessage{
+			MessageType: protobufs.ServerToClientMessageType_BROADCAST_GAME_UPDATE,
+			Payload: &protobufs.ServerToClientMessage_GameUpdatePayload{
+				GameUpdatePayload: result.Update,
+			},
+		})
+	}
+
+	if result.State != nil {
+		broadcast(manager, roomID, &protobufs.ServerToClientMessage{
+			MessageType: protobufs.ServerToClientMessageType_RESPOND_GAME_STATE,
+			Payload: &protobufs.ServerToClientMessage_GameStatePayload{
+				GameStatePayload: result.State,
+			},
+		})
+	}
+
+	if roomUpdate != nil {
+		broadcast(manager, roomID, &protobufs.ServerToClientMessage{
+			MessageType: protobufs.ServerToClientMessageType_BROADCAST_ROOM_UPDATE,
+			Payload: &protobufs.ServerToClientMessage_RoomUpdatePayload{
+				RoomUpdatePayload: roomUpdate,
+			},
+		})
+	}
+}
+
+func handleGameState(manager *game_room.RoomManager, roomID string, conn *websocket.Conn) {
+	state, gameErr := manager.GameState(roomID)
+	if gameErr != nil {
+		sendGameError(conn, gameErr)
+		return
+	}
+
+	send(conn, &protobufs.ServerToClientMessage{
+		MessageType: protobufs.ServerToClientMessageType_RESPOND_GAME_STATE,
+		Payload: &protobufs.ServerToClientMessage_GameStatePayload{
+			GameStatePayload: state,
+		},
+	})
+}
+
+func sendGameError(conn *websocket.Conn, gameErr *games.GameError) {
+	sendError(conn, gameErr.Code, gameErr.Message)
+}
+
+func sendError(conn *websocket.Conn, code string, message string) {
+	send(conn, &protobufs.ServerToClientMessage{
+		MessageType: protobufs.ServerToClientMessageType_SEND_ERROR,
+		Payload: &protobufs.ServerToClientMessage_ErrorPayload{
+			ErrorPayload: &protobufs.ServerErrorPayload{
+				Code:    code,
+				Message: message,
+			},
+		},
+	})
+}
+
+func send(conn *websocket.Conn, message *protobufs.ServerToClientMessage) {
+	data, err := proto.Marshal(message)
+	if err != nil {
+		fmt.Println("Error marshaling message:", err)
+		return
+	}
+	lockValue, _ := connectionWriteLocks.LoadOrStore(conn, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
+	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+		fmt.Println("Error sending message:", err)
+	}
+}
+
+func broadcast(manager *game_room.RoomManager, roomID string, message *protobufs.ServerToClientMessage) {
+	room, ok := manager.GetRoom(roomID)
+	if !ok {
+		return
+	}
+	for _, conn := range room.ConnectionsSnapshot() {
+		send(conn, message)
+	}
+}
+
+func roomIDFromWebSocketPath(path string) (string, bool) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 3 || parts[0] != "rooms" || parts[2] != "ws" || parts[1] == "" {
+		return "", false
+	}
+	return parts[1], true
+}

@@ -13,6 +13,8 @@ enum ServerToClientMessageType {
   BROADCAST_GAME_UPDATE = 1;
   BROADCAST_CHAT_MESSAGE = 2;
   SEND_ON_CONNECT_ACK = 3;
+  SEND_ERROR = 4;
+  BROADCAST_ROOM_UPDATE = 5;
 }
 
 
@@ -24,5 +26,7 @@ message ServerToClientMessage {
     GameUpdatePayload game_update_payload = 3;
     ChatMessagePayload chat_message_payload = 4;
     OnConnectAckPayload on_connect_ack_payload = 5;
+    ServerErrorPayload error_payload = 6;
+    RoomUpdatePayload room_update_payload = 7;
   }
 }

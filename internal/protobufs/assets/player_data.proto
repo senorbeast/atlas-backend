@@ -13,8 +13,9 @@ message PlayerData {
   string name = 2;
   int32 hearts = 3;
   int32 score = 4;
-  // Add more fields as needed for player-related data
+  bool connected = 5;
+  string joined_at = 6;
+  string last_seen_at = 7;
 }
-
 
 
