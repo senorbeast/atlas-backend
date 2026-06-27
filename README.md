@@ -1,70 +1,47 @@
 # Atlas Backend
 
-## Architecture
+Go backend for Atlas multiplayer rooms, chat, turn sequencing, scoring, and authoritative Atlas city validation.
 
-### Run the Project
-
-#### In Docker Container
+## Run
 
 ```bash
-# Build the Docker image
-docker-compose build
-
-# Run the Docker container
-docker-compose up
-
-# Stop the container
-docker-compose down
-
+go run .
 ```
 
-#### Directly
+The server exposes:
 
-```bash
+- `GET /create`
+- `GET /rooms/{roomId}/ws`
+- `GET /rooms/{roomId}/chat?limit=50&before=<messageId>`
 
-# Generate required files
+## Test
 
-# To run the app
-go run *.go
+PowerShell with a workspace-local cache:
 
-go build -o ./bin        # builds binary in ./bin
-go install               # installs app in $GOBIN or $GOPATH of the system.
-
+```powershell
+$env:GOCACHE = "D:\Huehue\atlas\.gocache"
+go test ./...
+go test -race ./...
 ```
 
-#### Development
+The regression suite covers room creation/join snapshots, player-name validation, strict turns, round-robin advancement, score sync, disconnect turn reassignment, free-for-all mode, chat pagination, chat JSON shape, city validation, duplicate/wrong-letter rejection, expiry, empty-room cleanup, WebSocket join/chat/move flows, event ordering, and late-join snapshots.
 
-Using docker dev container
-
-#### Generating files
-
-> Update as more proto defns are added
+## Generate Protobufs
 
 ```bash
 protoc --proto_path=internal/protobufs/assets --go_out=internal/protobufs --go_opt=paths=source_relative client_server_message.proto server_client_message.proto player_data.proto other_payloads.proto game_message_payload.proto chat_message_payload.proto
 ```
 
-<!-- protoc -I=src/protobuf/ --go_out=src/protobuf/ src/protobuf/game.proto -->
+## Structure
 
-### Folder structure
+- `internal/game_room`: room lifecycle, players, chat history, turn helpers, scoring policy, snapshots.
+- `internal/games`: generic game interface and Atlas word-chain implementation.
+- `internal/protobufs`: generated Go protobuf contracts.
+- `internal/web_socket`: websocket join and message handlers.
+- `FUTURE_GAMES.md`: extension guide for adding new games to the multiplayer loop.
 
-```bash
-├── bin
-│   └── atlas-backend
-├── go.mod
-├── go.sum
-├── internal        # internal packages
-│   ├── game_room
-│   │   ├── data_models.go
-│   │   └── game_room.go
-│   ├── protobufs   # protobuf defs and gens
-│   │   ├── game.pb.go
-│   │   └── game.proto
-│   └── web_socket
-│       └── websocket_handler.go
-├── main.go         # entry point
-├── packages        # exportable packages
-├── README.md
-└── tests
-    └── test_client.go
-```
+## Architecture Docs
+
+- `../ARCHITECTURE.md`: cross-project diagrams and runtime flows.
+- `AI_AGENT_GUIDE.md`: backend package boundaries, WebSocket flow, and protocol event ordering.
+- `FUTURE_GAMES.md`: reusable multiplayer loop and new-game extension diagrams.

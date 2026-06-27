@@ -22,6 +22,7 @@ var upgrader = websocket.Upgrader{
 
 var connectionWriteLocks sync.Map
 
+// HandleWebSocketConnections upgrades room websocket requests and runs the join/message loop.
 func HandleWebSocketConnections(manager *game_room.RoomManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		roomID, ok := roomIDFromWebSocketPath(r.URL.Path)
@@ -121,6 +122,7 @@ func handleJoin(manager *game_room.RoomManager, roomID string, conn *websocket.C
 	return playerID, true
 }
 
+// HandleAllMessages routes already-joined client protobuf messages to room handlers.
 func HandleAllMessages(manager *game_room.RoomManager, roomID string, playerID string, conn *websocket.Conn) {
 	for {
 		messageType, payload, err := conn.ReadMessage()

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,6 +101,29 @@ func TestRoomManagerRejectsInvalidPlayerName(t *testing.T) {
 	}
 }
 
+func TestRoomManagerRejectsInvalidChatContent(t *testing.T) {
+	setupRoomCityFixture(t)
+	manager := NewRoomManager()
+	now := time.Date(2026, 6, 21, 10, 0, 0, 0, time.UTC)
+	if _, err := manager.CreateRoom("room-1", DefaultGameKind, "", now); err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	_, playerID, gameErr := manager.JoinRoom("room-1", nil, "Ada", DefaultGameKind, "", now)
+	if gameErr != nil {
+		t.Fatalf("JoinRoom() error = %v", gameErr)
+	}
+
+	_, gameErr = manager.AddChatMessage("room-1", playerID, "   ", now)
+	if gameErr == nil || gameErr.Code != "empty_chat" {
+		t.Fatalf("empty chat error = %#v, want empty_chat", gameErr)
+	}
+
+	_, gameErr = manager.AddChatMessage("room-1", playerID, strings.Repeat("x", 281), now)
+	if gameErr == nil || gameErr.Code != "chat_too_long" {
+		t.Fatalf("long chat error = %#v, want chat_too_long", gameErr)
+	}
+}
+
 func TestRoomManagerStrictTurnsScoresAndAdvances(t *testing.T) {
 	setupRoomCityFixture(t)
 	manager := NewRoomManager()
@@ -162,6 +186,62 @@ func TestRoomManagerStrictTurnsScoresAndAdvances(t *testing.T) {
 	}
 }
 
+func TestRoomManagerLateJoinReceivesCurrentSnapshot(t *testing.T) {
+	setupRoomCityFixture(t)
+	manager := NewRoomManager()
+	now := time.Date(2026, 6, 21, 10, 0, 0, 0, time.UTC)
+	if _, err := manager.CreateRoom("room-1", DefaultGameKind, "", now); err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+
+	_, adaID, gameErr := manager.JoinRoom("room-1", nil, "Ada", DefaultGameKind, "", now)
+	if gameErr != nil {
+		t.Fatalf("JoinRoom(Ada) error = %v", gameErr)
+	}
+	_, graceID, gameErr := manager.JoinRoom("room-1", nil, "Grace", DefaultGameKind, "", now.Add(time.Second))
+	if gameErr != nil {
+		t.Fatalf("JoinRoom(Grace) error = %v", gameErr)
+	}
+	state, gameErr := manager.GameState("room-1")
+	if gameErr != nil {
+		t.Fatalf("GameState() error = %v", gameErr)
+	}
+	activeID := state.GetCurrentTurnPlayerId()
+	if activeID == "" {
+		t.Fatal("active player should be assigned before first move")
+	}
+
+	_, _, gameErr = manager.ApplyGameUpdate("room-1", activeID, &protobufs.GameUpdatePayload{
+		Type:     "submit_city",
+		GameKind: DefaultGameKind,
+		CityName: "Sydney",
+	}, now.Add(2*time.Second))
+	if gameErr != nil {
+		t.Fatalf("ApplyGameUpdate(active) error = %v", gameErr)
+	}
+
+	ack, lateID, gameErr := manager.JoinRoom("room-1", nil, "Linus", DefaultGameKind, "", now.Add(3*time.Second))
+	if gameErr != nil {
+		t.Fatalf("JoinRoom(late) error = %v", gameErr)
+	}
+	if lateID == "" || len(ack.GetRoom().GetPlayers()) != 3 {
+		t.Fatalf("late ACK players = %#v, lateID = %q; want three players and id", ack.GetRoom().GetPlayers(), lateID)
+	}
+	if got := len(ack.GetGameState().GetAcceptedCities()); got != 1 {
+		t.Fatalf("late ACK accepted cities = %d, want 1", got)
+	}
+	if got := scoreForPlayer(ack.GetRoom().GetPlayers(), activeID); got != 1 {
+		t.Fatalf("late ACK active score = %d, want 1", got)
+	}
+	nextTurn := ack.GetGameState().GetCurrentTurnPlayerId()
+	if nextTurn == "" || nextTurn == activeID {
+		t.Fatalf("late ACK next turn = %q, want another connected player", nextTurn)
+	}
+	if nextTurn != adaID && nextTurn != graceID {
+		t.Fatalf("late ACK next turn = %q, want Ada or Grace", nextTurn)
+	}
+}
+
 func TestRoomManagerFreeForAllAllowsAnyPlayer(t *testing.T) {
 	setupRoomCityFixture(t)
 	manager := NewRoomManager()
@@ -189,6 +269,22 @@ func TestRoomManagerFreeForAllAllowsAnyPlayer(t *testing.T) {
 	}
 	if got := result.State.GetCurrentTurnPlayerId(); got != "" {
 		t.Fatalf("free-for-all current turn = %q, want empty", got)
+	}
+}
+
+func TestRoomManagerRejectsExpiredJoin(t *testing.T) {
+	setupRoomCityFixture(t)
+	manager := NewRoomManager()
+	now := time.Date(2026, 6, 21, 10, 0, 0, 0, time.UTC)
+	room, err := manager.CreateRoom("room-1", DefaultGameKind, "", now)
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+	room.ExpiresAt = now.Add(-time.Second)
+
+	_, _, gameErr := manager.JoinRoom("room-1", nil, "Ada", DefaultGameKind, "", now)
+	if gameErr == nil || gameErr.Code != "room_closed" {
+		t.Fatalf("expired join error = %#v, want room_closed", gameErr)
 	}
 }
 

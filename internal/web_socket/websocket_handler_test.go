@@ -82,6 +82,10 @@ func TestWebSocketJoinChatAndCitySubmission(t *testing.T) {
 		inactiveConn = conn
 		inactiveID = adaID
 	}
+	readUntil(t, conn, protobufs.ServerToClientMessageType_BROADCAST_ROOM_UPDATE)
+	readUntil(t, conn, protobufs.ServerToClientMessageType_RESPOND_GAME_STATE)
+	readUntil(t, graceConn, protobufs.ServerToClientMessageType_BROADCAST_ROOM_UPDATE)
+	readUntil(t, graceConn, protobufs.ServerToClientMessageType_RESPOND_GAME_STATE)
 
 	writeClientMessage(t, conn, &protobufs.ClientToServerMessage{
 		MessageType: protobufs.ClientToServerMessageType_SEND_CHAT_MESSAGE,
@@ -95,6 +99,7 @@ func TestWebSocketJoinChatAndCitySubmission(t *testing.T) {
 	if chat.GetSenderName() != "Ada" || chat.GetMessageId() == "" || chat.GetContent() != "hello" {
 		t.Fatalf("chat payload = %#v, want sender name, id, content", chat)
 	}
+	readUntil(t, graceConn, protobufs.ServerToClientMessageType_BROADCAST_CHAT_MESSAGE)
 
 	writeClientMessage(t, inactiveConn, &protobufs.ClientToServerMessage{
 		MessageType: protobufs.ClientToServerMessageType_SEND_GAME_UPDATE,
@@ -122,7 +127,12 @@ func TestWebSocketJoinChatAndCitySubmission(t *testing.T) {
 		},
 	})
 
-	updateMessage := readUntil(t, conn, protobufs.ServerToClientMessageType_BROADCAST_GAME_UPDATE)
+	sequence := readSequence(t, conn, []protobufs.ServerToClientMessageType{
+		protobufs.ServerToClientMessageType_BROADCAST_GAME_UPDATE,
+		protobufs.ServerToClientMessageType_RESPOND_GAME_STATE,
+		protobufs.ServerToClientMessageType_BROADCAST_ROOM_UPDATE,
+	})
+	updateMessage := sequence[0]
 	update := updateMessage.GetGameUpdatePayload()
 	expectedSubmitter := "Ada"
 	if activeID == graceID {
@@ -134,14 +144,39 @@ func TestWebSocketJoinChatAndCitySubmission(t *testing.T) {
 		t.Fatalf("game update = %#v, want accepted Sydney by %s", update, expectedSubmitter)
 	}
 
-	stateMessage := readUntil(t, conn, protobufs.ServerToClientMessageType_RESPOND_GAME_STATE)
+	stateMessage := sequence[1]
 	if got := stateMessage.GetGameStatePayload().GetCurrentTurnPlayerId(); got != inactiveID {
 		t.Fatalf("next current turn = %q, want inactive player %q", got, inactiveID)
 	}
-	roomUpdateMessage := readUntil(t, conn, protobufs.ServerToClientMessageType_BROADCAST_ROOM_UPDATE)
+	roomUpdateMessage := sequence[2]
 	players := roomUpdateMessage.GetRoomUpdatePayload().GetRoom().GetPlayers()
 	if len(players) != 2 || scoreForPlayer(players, activeID) != 1 {
 		t.Fatalf("room players after score = %#v, want active player score 1", players)
+	}
+
+	lateConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Dial(late) error = %v", err)
+	}
+	defer lateConn.Close()
+	writeClientMessage(t, lateConn, &protobufs.ClientToServerMessage{
+		MessageType: protobufs.ClientToServerMessageType_JOIN_ROOM,
+		Payload: &protobufs.ClientToServerMessage_JoinRoomPayload{
+			JoinRoomPayload: &protobufs.JoinRoomPayload{
+				DisplayName: "Linus",
+				GameKind:    game_room.DefaultGameKind,
+			},
+		},
+	})
+	lateAck := readUntil(t, lateConn, protobufs.ServerToClientMessageType_SEND_ON_CONNECT_ACK).GetOnConnectAckPayload()
+	if len(lateAck.GetRoom().GetPlayers()) != 3 {
+		t.Fatalf("late ACK players = %#v, want three players", lateAck.GetRoom().GetPlayers())
+	}
+	if got := len(lateAck.GetGameState().GetAcceptedCities()); got != 1 {
+		t.Fatalf("late ACK accepted cities = %d, want 1", got)
+	}
+	if got := scoreForPlayer(lateAck.GetRoom().GetPlayers(), activeID); got != 1 {
+		t.Fatalf("late ACK active score = %d, want 1", got)
 	}
 }
 
@@ -175,6 +210,33 @@ func readUntil(t *testing.T, conn *websocket.Conn, messageType protobufs.ServerT
 	}
 	t.Fatalf("timed out waiting for %v", messageType)
 	return nil
+}
+
+func readSequence(t *testing.T, conn *websocket.Conn, messageTypes []protobufs.ServerToClientMessageType) []*protobufs.ServerToClientMessage {
+	t.Helper()
+	messages := make([]*protobufs.ServerToClientMessage, 0, len(messageTypes))
+	for _, messageType := range messageTypes {
+		message := readNext(t, conn)
+		if message.GetMessageType() != messageType {
+			t.Fatalf("next message type = %v, want %v", message.GetMessageType(), messageType)
+		}
+		messages = append(messages, message)
+	}
+	return messages
+}
+
+func readNext(t *testing.T, conn *websocket.Conn) *protobufs.ServerToClientMessage {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, payload, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read message: %v", err)
+	}
+	var serverMessage protobufs.ServerToClientMessage
+	if err := proto.Unmarshal(payload, &serverMessage); err != nil {
+		t.Fatalf("unmarshal server message: %v", err)
+	}
+	return &serverMessage
 }
 
 func setupWebSocketCityFixture(t *testing.T) {

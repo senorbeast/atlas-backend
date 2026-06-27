@@ -1,12 +1,7 @@
 package game_room
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"fmt"
-	mathrand "math/rand"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -28,19 +23,7 @@ const (
 	emptyRoomTTL      = 3 * time.Minute
 )
 
-type ChatMessage struct {
-	MessageID  string `json:"messageId"`
-	SenderID   string `json:"senderId"`
-	SenderName string `json:"senderName"`
-	Content    string `json:"content"`
-	CreatedAt  string `json:"createdAt"`
-}
-
-type ChatPage struct {
-	Messages   []ChatMessage `json:"messages"`
-	NextCursor string        `json:"nextCursor,omitempty"`
-}
-
+// GameRoom owns all mutable in-memory state for a single multiplayer room.
 type GameRoom struct {
 	mu           sync.Mutex
 	RoomID       string
@@ -62,15 +45,18 @@ type GameRoom struct {
 	Game         games.Game
 }
 
+// RoomManager coordinates in-memory rooms and is the public orchestration entrypoint.
 type RoomManager struct {
 	mu    sync.Mutex
 	rooms map[string]*GameRoom
 }
 
+// NewRoomManager creates an empty in-memory room registry.
 func NewRoomManager() *RoomManager {
 	return &RoomManager{rooms: make(map[string]*GameRoom)}
 }
 
+// CreateRoom creates a room with the requested game kind and turn mode.
 func (m *RoomManager) CreateRoom(roomID string, gameKind string, turnMode string, now time.Time) (*GameRoom, error) {
 	kind := strings.TrimSpace(gameKind)
 	if kind == "" {
@@ -107,6 +93,7 @@ func (m *RoomManager) CreateRoom(roomID string, gameKind string, turnMode string
 	return room, nil
 }
 
+// GetRoom looks up a room by id.
 func (m *RoomManager) GetRoom(roomID string) (*GameRoom, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -114,6 +101,7 @@ func (m *RoomManager) GetRoom(roomID string) (*GameRoom, bool) {
 	return room, ok
 }
 
+// RemoveRoom deletes a room and closes active websocket connections.
 func (m *RoomManager) RemoveRoom(roomID string) {
 	m.mu.Lock()
 	room, ok := m.rooms[roomID]
@@ -127,6 +115,7 @@ func (m *RoomManager) RemoveRoom(roomID string) {
 	}
 }
 
+// CleanupExpired removes rooms that are past expiry or have been empty for the cleanup TTL.
 func (m *RoomManager) CleanupExpired(now time.Time) []string {
 	m.mu.Lock()
 	var expired []*GameRoom
@@ -146,6 +135,7 @@ func (m *RoomManager) CleanupExpired(now time.Time) []string {
 	return removed
 }
 
+// JoinRoom validates player identity, registers the connection, and returns an initial snapshot ACK.
 func (m *RoomManager) JoinRoom(roomID string, conn *websocket.Conn, displayName string, gameKind string, turnMode string, now time.Time) (*protobufs.OnConnectAckPayload, string, *games.GameError) {
 	room, ok := m.GetRoom(roomID)
 	if !ok {
@@ -211,6 +201,7 @@ func (m *RoomManager) JoinRoom(roomID string, conn *websocket.Conn, displayName 
 	return ack, playerID, nil
 }
 
+// Disconnect removes the player connection and returns a room snapshot for broadcast.
 func (m *RoomManager) Disconnect(roomID string, playerID string, now time.Time) *protobufs.RoomUpdatePayload {
 	room, ok := m.GetRoom(roomID)
 	if !ok {
@@ -248,49 +239,7 @@ func (m *RoomManager) Disconnect(roomID string, playerID string, now time.Time) 
 	return &protobufs.RoomUpdatePayload{Room: room.snapshotLocked()}
 }
 
-func (m *RoomManager) AddChatMessage(roomID string, playerID string, content string, now time.Time) (*protobufs.ChatMessagePayload, *games.GameError) {
-	room, ok := m.GetRoom(roomID)
-	if !ok {
-		return nil, &games.GameError{Code: "room_not_found", Message: "Room not found"}
-	}
-
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
-		return nil, &games.GameError{Code: "empty_chat", Message: "Enter a message first"}
-	}
-	if len([]rune(trimmed)) > 280 {
-		return nil, &games.GameError{Code: "chat_too_long", Message: "Messages must be 280 characters or fewer"}
-	}
-
-	room.mu.Lock()
-	defer room.mu.Unlock()
-
-	player, ok := room.Players[playerID]
-	if !ok {
-		return nil, &games.GameError{Code: "unknown_player", Message: "Player is not in the room"}
-	}
-
-	id := generateID("msg")
-	createdAt := now.UTC().Format(time.RFC3339Nano)
-	message := ChatMessage{
-		MessageID:  id,
-		SenderID:   playerID,
-		SenderName: player.Name,
-		Content:    trimmed,
-		CreatedAt:  createdAt,
-	}
-	room.ChatHistory = append(room.ChatHistory, message)
-	room.LastActivity = now
-
-	return &protobufs.ChatMessagePayload{
-		MessageId:  id,
-		SenderId:   playerID,
-		SenderName: player.Name,
-		Content:    trimmed,
-		CreatedAt:  createdAt,
-	}, nil
-}
-
+// ApplyGameUpdate validates and applies a player game action, returning game and room broadcasts.
 func (m *RoomManager) ApplyGameUpdate(roomID string, playerID string, payload *protobufs.GameUpdatePayload, now time.Time) (*games.ActionResult, *protobufs.RoomUpdatePayload, *games.GameError) {
 	room, ok := m.GetRoom(roomID)
 	if !ok {
@@ -327,7 +276,7 @@ func (m *RoomManager) ApplyGameUpdate(roomID string, playerID string, payload *p
 	}
 
 	if result.Update != nil && result.Update.GetType() == "city_accepted" {
-		player.Score++
+		defaultScorePolicy.ApplyAcceptedMove(player)
 		room.HasGameMove = true
 		if room.TurnMode == TurnModeStrict {
 			room.advanceTurnLocked()
@@ -341,6 +290,7 @@ func (m *RoomManager) ApplyGameUpdate(roomID string, playerID string, payload *p
 	return result, &protobufs.RoomUpdatePayload{Room: room.snapshotLocked()}, nil
 }
 
+// GameState returns the current authoritative game snapshot for a room.
 func (m *RoomManager) GameState(roomID string) (*protobufs.GameStatePayload, *games.GameError) {
 	room, ok := m.GetRoom(roomID)
 	if !ok {
@@ -349,252 +299,6 @@ func (m *RoomManager) GameState(roomID string) (*protobufs.GameStatePayload, *ga
 	room.mu.Lock()
 	defer room.mu.Unlock()
 	return room.gameStateLocked(), nil
-}
-
-func (m *RoomManager) ChatPage(roomID string, limit int, before string) (ChatPage, error) {
-	room, ok := m.GetRoom(roomID)
-	if !ok {
-		return ChatPage{}, errors.New("room not found")
-	}
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	room.mu.Lock()
-	defer room.mu.Unlock()
-
-	end := len(room.ChatHistory)
-	if before != "" {
-		for index, message := range room.ChatHistory {
-			if message.MessageID == before {
-				end = index
-				break
-			}
-		}
-	}
-
-	start := end - limit
-	if start < 0 {
-		start = 0
-	}
-
-	messages := make([]ChatMessage, 0, end-start)
-	for i := end - 1; i >= start; i-- {
-		messages = append(messages, room.ChatHistory[i])
-	}
-
-	nextCursor := ""
-	if start > 0 && len(messages) > 0 {
-		nextCursor = room.ChatHistory[start].MessageID
-	}
-
-	return ChatPage{Messages: messages, NextCursor: nextCursor}, nil
-}
-
-func (r *GameRoom) ConnectionsSnapshot() []*websocket.Conn {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	conns := make([]*websocket.Conn, 0, len(r.Connections))
-	for _, conn := range r.Connections {
-		if conn != nil {
-			conns = append(conns, conn)
-		}
-	}
-	return conns
-}
-
-func (r *GameRoom) Snapshot() *protobufs.RoomSnapshot {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.snapshotLocked()
-}
-
-func (r *GameRoom) snapshotLocked() *protobufs.RoomSnapshot {
-	r.ensureCurrentTurnLocked()
-
-	players := make([]*protobufs.PlayerData, 0, len(r.Players))
-	for _, player := range r.Players {
-		copyPlayer := *player
-		players = append(players, &copyPlayer)
-	}
-	sort.Slice(players, func(i, j int) bool {
-		return players[i].JoinedAt < players[j].JoinedAt
-	})
-	currentTurnPlayerID, currentTurnPlayerName := r.currentTurnPlayerLocked()
-
-	return &protobufs.RoomSnapshot{
-		RoomId:                r.RoomID,
-		GameKind:              r.GameKind,
-		Status:                r.Status,
-		MaxPlayers:            int32(r.MaxPlayers),
-		IsStarted:             r.Status == RoomStatusPlaying,
-		CreatedAt:             r.CreatedAt.UTC().Format(time.RFC3339Nano),
-		StartedAt:             r.StartedAt.UTC().Format(time.RFC3339Nano),
-		ExpiresAt:             r.ExpiresAt.UTC().Format(time.RFC3339Nano),
-		Players:               players,
-		TurnMode:              r.TurnMode,
-		CurrentTurnPlayerId:   currentTurnPlayerID,
-		CurrentTurnPlayerName: currentTurnPlayerName,
-		TurnIndex:             int32(r.TurnIndex),
-	}
-}
-
-func (r *GameRoom) gameStateLocked() *protobufs.GameStatePayload {
-	r.ensureCurrentTurnLocked()
-
-	state := r.Game.Snapshot()
-	state.CurrentTurnPlayerId = ""
-	state.CurrentTurnPlayerName = ""
-	state.TurnIndex = int32(r.TurnIndex)
-	if r.TurnMode != TurnModeStrict {
-		return state
-	}
-
-	currentTurnPlayerID, currentTurnPlayerName := r.currentTurnPlayerLocked()
-	state.CurrentTurnPlayerId = currentTurnPlayerID
-	state.CurrentTurnPlayerName = currentTurnPlayerName
-	state.TurnIndex = int32(r.TurnIndex)
-	return state
-}
-
-func (r *GameRoom) currentTurnPlayerLocked() (string, string) {
-	if r.TurnMode != TurnModeStrict {
-		return "", ""
-	}
-	r.ensureCurrentTurnLocked()
-	players := r.connectedPlayersLocked()
-	if len(players) == 0 {
-		r.TurnIndex = 0
-		return "", ""
-	}
-	r.clampTurnIndexLocked()
-	current := players[r.TurnIndex]
-	return current.GetPlayerId(), current.GetName()
-}
-
-func (r *GameRoom) connectedPlayersLocked() []*protobufs.PlayerData {
-	players := make([]*protobufs.PlayerData, 0, len(r.Players))
-	seen := make(map[string]struct{}, len(r.TurnOrder))
-	for _, playerID := range r.TurnOrder {
-		player, ok := r.Players[playerID]
-		if ok && player.GetConnected() {
-			players = append(players, player)
-		}
-		seen[playerID] = struct{}{}
-	}
-	for playerID := range r.Connections {
-		if _, exists := seen[playerID]; exists {
-			continue
-		}
-		player, ok := r.Players[playerID]
-		if ok && player.GetConnected() {
-			players = append(players, player)
-		}
-	}
-	return players
-}
-
-func (r *GameRoom) currentTurnPlayerIDLocked() string {
-	if r.TurnMode != TurnModeStrict {
-		return ""
-	}
-	r.ensureCurrentTurnLocked()
-	players := r.connectedPlayersLocked()
-	if len(players) == 0 {
-		return ""
-	}
-	if r.TurnIndex < 0 || r.TurnIndex >= len(players) {
-		r.TurnIndex = 0
-	}
-	return players[r.TurnIndex].GetPlayerId()
-}
-
-func (r *GameRoom) advanceTurnLocked() {
-	r.ensureCurrentTurnLocked()
-	players := r.connectedPlayersLocked()
-	if len(players) == 0 {
-		r.TurnIndex = 0
-		return
-	}
-	r.TurnIndex = (r.TurnIndex + 1) % len(players)
-}
-
-func (r *GameRoom) randomizeCurrentTurnLocked(now time.Time) {
-	players := r.connectedPlayersLocked()
-	if len(players) == 0 {
-		r.TurnIndex = 0
-		return
-	}
-	if len(players) == 1 {
-		r.TurnIndex = 0
-		return
-	}
-	r.TurnIndex = mathrand.New(mathrand.NewSource(now.UnixNano())).Intn(len(players))
-}
-
-func (r *GameRoom) ensureCurrentTurnLocked() {
-	if r.TurnMode != TurnModeStrict {
-		return
-	}
-	players := r.connectedPlayersLocked()
-	if len(players) == 0 {
-		r.TurnIndex = 0
-		return
-	}
-	if len(r.TurnOrder) == 0 {
-		r.TurnOrder = make([]string, 0, len(players))
-		for _, player := range players {
-			r.TurnOrder = append(r.TurnOrder, player.GetPlayerId())
-		}
-	}
-	r.clampTurnIndexLocked()
-}
-
-func (r *GameRoom) clampTurnIndexLocked() {
-	players := r.connectedPlayersLocked()
-	if len(players) == 0 {
-		r.TurnIndex = 0
-		return
-	}
-	if r.TurnIndex < 0 || r.TurnIndex >= len(players) {
-		r.TurnIndex = r.TurnIndex % len(players)
-		if r.TurnIndex < 0 {
-			r.TurnIndex = 0
-		}
-	}
-}
-
-func (r *GameRoom) setTurnIndexForPlayerLocked(playerID string) {
-	players := r.connectedPlayersLocked()
-	for index, player := range players {
-		if player.GetPlayerId() == playerID {
-			r.TurnIndex = index
-			return
-		}
-	}
-	r.clampTurnIndexLocked()
-}
-
-func (r *GameRoom) turnOrderIndexLocked(playerID string) int {
-	for index, item := range r.TurnOrder {
-		if item == playerID {
-			return index
-		}
-	}
-	return -1
-}
-
-func (r *GameRoom) removeFromTurnOrderLocked(playerID string) {
-	next := r.TurnOrder[:0]
-	for _, item := range r.TurnOrder {
-		if item != playerID {
-			next = append(next, item)
-		}
-	}
-	r.TurnOrder = next
 }
 
 func (r *GameRoom) shouldCleanup(now time.Time) bool {
@@ -623,29 +327,4 @@ func (r *GameRoom) closeConnections() {
 	for _, conn := range conns {
 		_ = conn.Close()
 	}
-}
-
-func normalizeDisplayName(value string) string {
-	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
-}
-
-func normalizeTurnMode(value string) (string, error) {
-	mode := strings.TrimSpace(value)
-	if mode == "" {
-		return TurnModeStrict, nil
-	}
-	switch mode {
-	case TurnModeStrict, TurnModeFreeForAll:
-		return mode, nil
-	default:
-		return "", errors.New("invalid turn mode")
-	}
-}
-
-func generateID(prefix string) string {
-	bytes := make([]byte, 8)
-	if _, err := rand.Read(bytes); err != nil {
-		return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
-	}
-	return fmt.Sprintf("%s-%s", prefix, hex.EncodeToString(bytes))
 }

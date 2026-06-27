@@ -57,6 +57,7 @@ type AtlasWordGame struct {
 	endReason      string
 }
 
+// NewAtlasWordGame creates an authoritative Atlas word-chain game with city validation.
 func NewAtlasWordGame(now time.Time) (*AtlasWordGame, *GameError) {
 	if _, err := loadCities(); err != nil {
 		return nil, &GameError{Code: "city_data_unavailable", Message: "City data is unavailable"}
@@ -70,28 +71,33 @@ func NewAtlasWordGame(now time.Time) (*AtlasWordGame, *GameError) {
 	}, nil
 }
 
+// Kind returns the protocol game kind handled by this implementation.
 func (g *AtlasWordGame) Kind() string {
 	return AtlasWordKind
 }
 
+// ExpiresAt returns the hard room/game expiry time.
 func (g *AtlasWordGame) ExpiresAt() time.Time {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.expiresAt
 }
 
+// IsOver reports whether the city limit or time limit has ended the game.
 func (g *AtlasWordGame) IsOver() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.isOver
 }
 
+// Snapshot returns the accepted-city history and current Atlas metadata.
 func (g *AtlasWordGame) Snapshot() *protobufs.GameStatePayload {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.snapshotLocked()
 }
 
+// Apply validates and applies a player city submission.
 func (g *AtlasWordGame) Apply(action PlayerAction) (*ActionResult, *GameError) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

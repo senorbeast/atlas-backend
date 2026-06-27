@@ -62,6 +62,47 @@ func TestAtlasWordGameRejectsUnknownCity(t *testing.T) {
 	}
 }
 
+func TestAtlasWordGameRejectsEmptyAndUnsupportedActions(t *testing.T) {
+	setupCityFixture(t)
+	game, gameErr := NewAtlasWordGame(time.Now())
+	if gameErr != nil {
+		t.Fatalf("NewAtlasWordGame() error = %v", gameErr)
+	}
+
+	_, gameErr = game.Apply(PlayerAction{PlayerID: "p1", PlayerName: "Ada", Type: "dance", CityName: "Sydney"})
+	if gameErr == nil || gameErr.Code != "invalid_game_action" {
+		t.Fatalf("unsupported action error = %#v, want invalid_game_action", gameErr)
+	}
+
+	_, gameErr = game.Apply(PlayerAction{PlayerID: "p1", PlayerName: "Ada", Type: "submit_city", CityName: "   "})
+	if gameErr == nil || gameErr.Code != "empty_city" {
+		t.Fatalf("empty city error = %#v, want empty_city", gameErr)
+	}
+}
+
+func TestAtlasWordGameNormalizesCityNames(t *testing.T) {
+	setupCityFixture(t)
+	now := time.Date(2026, 6, 21, 10, 0, 0, 0, time.UTC)
+	game, gameErr := NewAtlasWordGame(now)
+	if gameErr != nil {
+		t.Fatalf("NewAtlasWordGame() error = %v", gameErr)
+	}
+
+	result, gameErr := game.Apply(PlayerAction{
+		PlayerID:   "p1",
+		PlayerName: "Ada",
+		Type:       "submit_city",
+		CityName:   "  sydney  ",
+		Now:        now,
+	})
+	if gameErr != nil {
+		t.Fatalf("Apply(normalized Sydney) error = %v", gameErr)
+	}
+	if got := result.Update.GetAcceptedCity().GetName(); got != "Sydney" {
+		t.Fatalf("accepted city name = %q, want canonical Sydney", got)
+	}
+}
+
 func TestAtlasWordGameEndsAtCityLimitAndExpiry(t *testing.T) {
 	setupCityFixture(t)
 	now := time.Date(2026, 6, 21, 10, 0, 0, 0, time.UTC)
